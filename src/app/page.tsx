@@ -17,9 +17,13 @@ import {
   deleteDoc,
   doc,
   writeBatch,
-  serverTimestamp
+  serverTimestamp,
+  setDoc,
+  getDoc
 } from 'firebase/firestore'
 import { useAuth } from '@/context/AuthContext'
+import { User } from 'firebase/auth'
+import { useRouter } from 'next/navigation'
 
 type Task = {
   id?: string
@@ -42,6 +46,15 @@ type TimeBlock = {
 type HistoricalTask = Task & {
   originalDate: string  // The date it was originally planned for
   actualDate: string   // The date it was actually executed
+}
+
+type SuggestedTask = {
+  activity: string
+  description: string
+  startTime: number
+  duration: number
+  confidence: number // 0-100
+  reasoning: string
 }
 
 const formatDate = (date: Date) => format(date, 'yyyy-MM-dd')
@@ -325,6 +338,336 @@ const TaskDetailPopup = ({
   )
 }
 
+// Add these helper functions
+const hasTimeConflict = (task1: Task, task2: Task) => {
+  const task1End = task1.startTime + task1.duration;
+  const task2End = task2.startTime + task2.duration;
+  return (
+    (task1.startTime >= task2.startTime && task1.startTime < task2End) ||
+    (task2.startTime >= task1.startTime && task2.startTime < task1End)
+  );
+};
+
+const findTimeConflicts = (newTask: Task, existingTasks: Task[]) => {
+  return existingTasks.filter(task => hasTimeConflict(newTask, task));
+};
+
+// Add or update these helper functions
+const calculatePlannedHours = (tasks: Task[]) => {
+  return tasks.reduce((total, task) => total + task.duration, 0);
+};
+
+const handleTaskReplacement = async (
+  newTask: Task, 
+  conflictingTasks: Task[], 
+  user: User,
+  setTomorrowTasks: (tasks: Task[]) => void,
+  setPlannedHours: (hours: number) => void
+) => {
+  if (!user) return;
+
+  try {
+    const batch = writeBatch(db);
+
+    // Delete conflicting tasks
+    for (const task of conflictingTasks) {
+      if (task.id) {
+        const taskRef = doc(db, 'tasks', task.id);
+        batch.delete(taskRef);
+      }
+    }
+
+    // Add new task
+    const newTaskRef = doc(collection(db, 'tasks'));
+    const taskWithId = {
+      ...newTask,
+      id: newTaskRef.id,
+      userId: user.uid
+    };
+    batch.set(newTaskRef, taskWithId);
+
+    // Commit the batch
+    await batch.commit();
+
+    // Update local state
+    setTomorrowTasks(prevTasks => {
+      const filteredTasks = prevTasks.filter(task => 
+        !conflictingTasks.some(conflict => conflict.id === task.id)
+      );
+      return [...filteredTasks, taskWithId].sort((a, b) => a.startTime - b.startTime);
+    });
+
+    // Update planned hours
+    setPlannedHours(prevHours => {
+      const removedHours = conflictingTasks.reduce((total, task) => total + task.duration, 0);
+      return prevHours - removedHours + newTask.duration;
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Error replacing tasks:', error);
+    return false;
+  }
+};
+
+const SuggestedTaskCard = ({ 
+  suggestion, 
+  theme, 
+  onAccept,
+  existingTasks,
+  onRemove,
+  user,
+  setTomorrowTasks,
+  setPlannedHours
+}: { 
+  suggestion: SuggestedTask
+  theme: string
+  onAccept: (task: Partial<Task>) => void
+  existingTasks: Task[]
+  onRemove: () => void
+  user: User | null
+  setTomorrowTasks: (tasks: Task[]) => void
+  setPlannedHours: (hours: number | ((prev: number) => number)) => void
+}) => {
+  const [showConflict, setShowConflict] = useState(false);
+  const [conflictingTasks, setConflictingTasks] = useState<Task[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleAccept = () => {
+    const newTask: Task = {
+      startTime: suggestion.startTime,
+      duration: suggestion.duration,
+      activity: suggestion.activity,
+      description: suggestion.description,
+      isPriority: suggestion.confidence >= 80,
+      createdAt: Date.now(),
+      date: tomorrow,
+      completed: false
+    };
+
+    const conflicts = findTimeConflicts(newTask, existingTasks);
+
+    if (conflicts.length > 0) {
+      setConflictingTasks(conflicts);
+      setShowConflict(true);
+    } else {
+      handleAddTask(newTask);
+    }
+  };
+
+  const handleAddTask = async (newTask: Task) => {
+    setIsProcessing(true);
+    try {
+      if (!user) return;
+
+      const taskRef = doc(collection(db, 'tasks'));
+      const taskWithId = {
+        ...newTask,
+        id: taskRef.id,
+        userId: user.uid
+      };
+
+      await setDoc(taskRef, taskWithId);
+
+      setTomorrowTasks(prevTasks => 
+        [...prevTasks, taskWithId].sort((a, b) => a.startTime - b.startTime)
+      );
+      setPlannedHours(prev => prev + newTask.duration);
+      onRemove();
+    } catch (error) {
+      console.error('Error adding task:', error);
+      alert('Failed to add task. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleReplace = async () => {
+    setIsProcessing(true);
+    try {
+      const newTask: Task = {
+        startTime: suggestion.startTime,
+        duration: suggestion.duration,
+        activity: suggestion.activity,
+        description: suggestion.description,
+        isPriority: suggestion.confidence >= 80,
+        createdAt: Date.now(),
+        date: tomorrow,
+        completed: false
+      };
+
+      const success = await handleTaskReplacement(
+        newTask,
+        conflictingTasks,
+        user,
+        setTomorrowTasks,
+        setPlannedHours
+      );
+
+      if (success) {
+        onRemove();
+        setShowConflict(false);
+      }
+    } catch (error) {
+      console.error('Error replacing tasks:', error);
+      alert('Failed to replace tasks. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <motion.div
+      layout
+      className={`
+        rounded-xl border overflow-hidden
+        ${theme === 'dark'
+          ? 'bg-slate-700/50 border-slate-600/50'
+          : 'bg-white border-slate-200'
+        }
+      `}
+    >
+      {/* Main Card Content */}
+      <div className="p-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`
+                px-2 py-0.5 rounded-full text-xs font-medium
+                ${theme === 'dark' 
+                  ? 'bg-violet-500/20 text-violet-400' 
+                  : 'bg-violet-50 text-violet-600'
+                }
+              `}>
+                {formatTime(suggestion.startTime)} - {formatTime(suggestion.startTime + suggestion.duration)}
+              </span>
+              <span className={`
+                text-xs font-medium
+                ${suggestion.confidence >= 80
+                  ? theme === 'dark' ? 'text-green-400' : 'text-green-600'
+                  : suggestion.confidence >= 50
+                  ? theme === 'dark' ? 'text-yellow-400' : 'text-yellow-600'
+                  : theme === 'dark' ? 'text-red-400' : 'text-red-600'
+                }
+              `}>
+                {suggestion.confidence}% Match
+              </span>
+            </div>
+            <h3 className={`text-sm font-medium truncate
+              ${theme === 'dark' ? 'text-white' : 'text-slate-900'}
+            `}>
+              {suggestion.activity}
+            </h3>
+            <p className={`text-xs truncate
+              ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
+            `}>
+              {suggestion.description}
+            </p>
+          </div>
+          <button
+            onClick={handleAccept}
+            className={`
+              p-2 rounded-lg flex-shrink-0 transition-all duration-200
+              ${theme === 'dark'
+                ? 'bg-violet-500 hover:bg-violet-600 text-white'
+                : 'bg-violet-600 hover:bg-violet-700 text-white'
+              }
+            `}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Conflict Section */}
+      {showConflict && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          className={`
+            border-t
+            ${theme === 'dark' ? 'border-slate-600/50' : 'border-slate-200'}
+          `}
+        >
+          <div className="p-3 space-y-2">
+            {/* Conflict Message */}
+            <div className={`text-xs
+              ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
+            `}>
+              Conflicts with existing task:
+              <span className="block mt-1">
+                {conflictingTasks.map(task => (
+                  `${task.activity} (${formatTime(task.startTime)} - ${formatTime(task.startTime + task.duration)})`
+                )).join(', ')}
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowConflict(false)}
+                disabled={isProcessing}
+                className={`
+                  px-2 py-1 rounded text-xs
+                  ${theme === 'dark'
+                    ? 'hover:bg-slate-600 text-slate-300'
+                    : 'hover:bg-slate-100 text-slate-600'
+                  }
+                  ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}
+                `}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReplace}
+                disabled={isProcessing}
+                className={`
+                  px-2 py-1 rounded text-xs font-medium flex items-center gap-1
+                  ${theme === 'dark'
+                    ? 'bg-violet-500 hover:bg-violet-600 text-white'
+                    : 'bg-violet-600 hover:bg-violet-700 text-white'
+                  }
+                  ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}
+                `}
+              >
+                {isProcessing && (
+                  <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                )}
+                Replace
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+};
+
+const generateSuggestions = async (historicalTasks: Task[]): Promise<SuggestedTask[]> => {
+  try {
+    const response = await fetch('/api/generate-suggestions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ historicalTasks }),
+    });
+    
+    if (!response.ok) throw new Error('Failed to generate suggestions');
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error generating suggestions:', error);
+    return [];
+  }
+}
+
 export default function DailyTaskManager() {
   const { theme, setTheme } = useTheme()
   const { user, signInWithGoogle, logout } = useAuth()
@@ -341,6 +684,14 @@ export default function DailyTaskManager() {
   const [completedPriorities, setCompletedPriorities] = useState<number>(0)
   const [showFullSchedule, setShowFullSchedule] = useState(false)
   const [showDetailPopup, setShowDetailPopup] = useState(false)
+  const [suggestions, setSuggestions] = useState<SuggestedTask[]>([])
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const [plannedHours, setPlannedHours] = useState(0);
+  // Add this state to manage the collapse state
+  const [isSuggestionsExpanded, setIsSuggestionsExpanded] = useState(false);
+  // Add this near the top where other state variables are defined
+  const [isPremiumUser, setIsPremiumUser] = useState(false);
+  const router = useRouter()
 
   const getCurrentTasks = () => showTomorrow ? tomorrowTasks : todayTasks
   const setCurrentTasks = (tasks: Task[]) => {
@@ -381,6 +732,25 @@ export default function DailyTaskManager() {
 
     return () => clearInterval(timer)
   }, [user])
+
+  useEffect(() => {
+    if (user) {
+      // Check user's premium status
+      const checkPremiumStatus = async () => {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          setIsPremiumUser(userDoc.data()?.isPremium || false);
+        } catch (error) {
+          console.error('Error checking premium status:', error);
+          setIsPremiumUser(false);
+        }
+      };
+      
+      checkPremiumStatus();
+    } else {
+      setIsPremiumUser(false);
+    }
+  }, [user]);
 
   const handleMidnightTransition = async () => {
     if (!user) return
@@ -499,6 +869,42 @@ export default function DailyTaskManager() {
     const completed = getCurrentTasks().filter(task => task.isPriority && task.completed).length
     setCompletedPriorities(completed)
   }, [todayTasks, tomorrowTasks, showTomorrow])
+
+  useEffect(() => {
+    if (showTomorrow && user) {
+      loadSuggestions()
+    }
+  }, [showTomorrow, user])
+
+  const loadSuggestions = async () => {
+    if (!user) return
+    
+    setIsLoadingSuggestions(true)
+    try {
+      // Get historical tasks from the last 7 days
+      const last7Days = Array.from({ length: 7 }, (_, i) => 
+        formatDate(addDays(new Date(), -(i + 1)))
+      )
+      
+      const historicalTasksQuery = query(
+        collection(db, 'taskHistory'),
+        where('userId', '==', user.uid),
+        where('actualDate', 'in', last7Days)
+      )
+      
+      const snapshot = await getDocs(historicalTasksQuery)
+      const historicalTasks = snapshot.docs.map(doc => ({
+        ...doc.data()
+      })) as Task[]
+      
+      const newSuggestions = await generateSuggestions(historicalTasks)
+      setSuggestions(newSuggestions)
+    } catch (error) {
+      console.error('Error loading suggestions:', error)
+    } finally {
+      setIsLoadingSuggestions(false)
+    }
+  }
 
   const hours = Array.from({ length: 24 }, (_, i) => i)
 
@@ -926,6 +1332,13 @@ export default function DailyTaskManager() {
     }
   }
 
+  useEffect(() => {
+    if (tomorrowTasks) {
+      const totalHours = tomorrowTasks.reduce((total, task) => total + task.duration, 0);
+      setPlannedHours(totalHours);
+    }
+  }, [tomorrowTasks]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen p-8">
@@ -1272,6 +1685,161 @@ export default function DailyTaskManager() {
             </div>
           </div>
 
+          {/* AI Suggestions Section - Now positioned right after stats */}
+          {showTomorrow && suggestions.length > 0 && (
+            <div className="max-w-4xl mx-auto mb-6">
+              <motion.div
+                layout
+                className={`
+                  rounded-2xl border-2 overflow-hidden
+                  ${theme === 'dark'
+                    ? 'bg-slate-800/90 border-violet-500/20 backdrop-blur-lg'
+                    : 'bg-white/90 border-violet-100 backdrop-blur-lg'
+                  }
+                `}
+              >
+                <div
+                  onClick={() => isPremiumUser && setIsSuggestionsExpanded(prev => !prev)}
+                  className={`
+                    w-full p-4 flex items-center justify-between
+                    ${isPremiumUser ? 'cursor-pointer' : 'cursor-default'}
+                    ${theme === 'dark' ? 'hover:bg-slate-700/50' : 'hover:bg-slate-50'}
+                    transition-colors
+                  `}
+                >
+                  <div className="flex items-center gap-3">
+                    <svg 
+                      className={`w-5 h-5 ${theme === 'dark' ? 'text-violet-400' : 'text-violet-500'}`}
+                      fill="none" 
+                      viewBox="0 0 24 24" 
+                      stroke="currentColor"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={2} 
+                        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                      />
+                    </svg>
+                    <div className="text-left">
+                      <h2 className={`text-lg font-medium flex items-center gap-2
+                        ${theme === 'dark' ? 'text-white' : 'text-slate-900'}
+                      `}>
+                        AI Suggestions
+                        {!isPremiumUser && (
+                          <span className={`
+                            text-xs px-2 py-0.5 rounded-full
+                            ${theme === 'dark' ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-600'}
+                          `}>
+                            Premium
+                          </span>
+                        )}
+                      </h2>
+                      <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                        {isPremiumUser 
+                          ? 'Based on your previous activities'
+                          : 'Upgrade to Premium to unlock AI suggestions'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isPremiumUser ? (
+                    // Existing premium user controls
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          loadSuggestions();
+                        }}
+                        disabled={isLoadingSuggestions}
+                        className={`
+                          p-2 rounded-lg transition-colors flex items-center gap-2 text-sm
+                          ${theme === 'dark'
+                            ? 'hover:bg-slate-700 text-slate-300'
+                            : 'hover:bg-slate-100 text-slate-600'
+                          }
+                          ${isLoadingSuggestions ? 'opacity-50 cursor-not-allowed' : ''}
+                        `}
+                        aria-label="Refresh suggestions"
+                      >
+                        <svg className={`w-4 h-4 ${isLoadingSuggestions ? 'animate-spin' : ''}`} 
+                          fill="none" 
+                          viewBox="0 0 24 24" 
+                          stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                          />
+                        </svg>
+                      </button>
+                      <svg 
+                        className={`w-5 h-5 transition-transform duration-200
+                          ${isSuggestionsExpanded ? 'rotate-180' : ''}
+                          ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
+                        `}
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  ) : (
+                    // Upgrade button for non-premium users
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push('/premium');
+                      }}
+                      className={`
+                        px-4 py-2 rounded-lg text-sm font-medium
+                        ${theme === 'dark'
+                          ? 'bg-violet-500 hover:bg-violet-600 text-white'
+                          : 'bg-violet-600 hover:bg-violet-700 text-white'
+                        }
+                      `}
+                    >
+                      Upgrade
+                    </button>
+                  )}
+                </div>
+
+                {isPremiumUser && isSuggestionsExpanded && (
+                  <AnimatePresence>
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className={`border-t ${theme === 'dark' ? 'border-slate-700' : 'border-slate-200'}`}
+                    >
+                      <div className="p-4 space-y-3">
+                        {suggestions.map((suggestion, index) => (
+                          <SuggestedTaskCard
+                            key={index}
+                            suggestion={suggestion}
+                            theme={theme || 'light'}
+                            existingTasks={tomorrowTasks}
+                            onAccept={(task) => {
+                              setEditingTask(task as Task);
+                              setShowTaskModal(true);
+                            }}
+                            onRemove={() => {
+                              setSuggestions(prev => prev.filter((_, i) => i !== index));
+                            }}
+                            user={user}
+                            setTomorrowTasks={setTomorrowTasks}
+                            setPlannedHours={setPlannedHours}
+                          />
+                        ))}
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
+                )}
+              </motion.div>
+            </div>
+          )}
+
           {/* Add suggestion button when in Today view */}
           {!showTomorrow && !showFullSchedule && (
             <div className="max-w-4xl mx-auto mb-6">
@@ -1350,7 +1918,7 @@ export default function DailyTaskManager() {
                           // If in edit mode, go straight to edit
                           setEditingTask(task)
                           setShowTaskModal(true)
-                        } else {
+    } else {
                           // If not in edit mode, show detail popup
                           setEditingTask(task)
                           setShowDetailPopup(true)
@@ -1782,6 +2350,10 @@ export default function DailyTaskManager() {
           }}
         />
       )}
+
+      
+
+     
     </div>
   )
 }
