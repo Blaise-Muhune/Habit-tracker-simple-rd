@@ -17,7 +17,6 @@ import {
   deleteDoc,
   doc,
   writeBatch,
-  serverTimestamp,
   setDoc,
   getDoc
 } from 'firebase/firestore'
@@ -2191,7 +2190,7 @@ Your Task Manager`,
                     Edit Mode Active
                   </p>
                   <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                    You can now modify today's schedule
+                    You can now modify today&apos;s schedule
                   </p>
                 </div>
                 <button

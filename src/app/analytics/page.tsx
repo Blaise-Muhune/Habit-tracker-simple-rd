@@ -103,37 +103,6 @@ export default function AnalyticsPage() {
     collaborationMetrics: {} as Record<string, number>,
   })
 
-  useEffect(() => {
-    const checkPremiumStatus = async () => {
-      if (!user) {
-        router.push('/')
-        return
-      }
-
-      try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid))
-        
-        if (userDoc.exists()) {
-          const userData = userDoc.data()
-          setIsPremiumUser(userData.isPremium || false)
-          
-          if (userData.isPremium) {
-            await loadAnalyticsData()
-          }
-        } else {
-          setIsPremiumUser(false)
-        }
-      } catch (error) {
-        console.error('Error checking premium status:', error)
-        setIsPremiumUser(false)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    checkPremiumStatus()
-  }, [user, router])
-
   const loadAnalyticsData = async () => {
     if (!user) return
 
@@ -213,6 +182,37 @@ export default function AnalyticsPage() {
       console.error('Error loading analytics data:', error)
     }
   }
+
+  useEffect(() => {
+    const checkPremiumStatus = async () => {
+      if (!user) {
+        router.push('/')
+        return
+      }
+
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid))
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data()
+          setIsPremiumUser(userData.isPremium || false)
+          
+          if (userData.isPremium) {
+            await loadAnalyticsData()
+          }
+        } else {
+          setIsPremiumUser(false)
+        }
+      } catch (error) {
+        console.error('Error checking premium status:', error)
+        setIsPremiumUser(false)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    checkPremiumStatus()
+  }, [user, router, loadAnalyticsData])
 
   if (isLoading) {
     return (

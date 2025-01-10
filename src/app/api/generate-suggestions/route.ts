@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 
 // Check if API key exists
 
-let key = process.env.OPENAI_API_KEY
+const key = process.env.OPENAI_API_KEY
 if (!key) {
   console.error('OPENAI_API_KEY is not set in environment variables')
 }
@@ -111,19 +111,19 @@ export async function POST(request: Request) {
     // 6. Return successful response
     return NextResponse.json(parsedResponse.suggestions)
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     // 7. Detailed error logging
     console.error('Error details:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      name: error instanceof Error ? error.name : 'Unknown error',
+      stack: error instanceof Error ? error.stack : 'Unknown error',
     })
 
     // 8. Return appropriate error response
     return NextResponse.json(
       { 
         error: 'Failed to generate suggestions',
-        details: error.message 
+        details: error instanceof Error ? error.message : 'Unknown error'
       }, 
       { status: 500 }
     )
