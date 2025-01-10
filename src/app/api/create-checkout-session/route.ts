@@ -42,8 +42,8 @@ export async function POST(request: Request) {
         },
       ],
       mode: 'subscription',
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/premium/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/premium`,
+      success_url: `https://simple-r.vercel.app/premium/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `https://simple-r.vercel.app/premium`,
       customer_email: email,
       metadata: {
         userId,
