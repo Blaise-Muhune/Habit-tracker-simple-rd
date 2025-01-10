@@ -25,47 +25,13 @@ import { useAuth } from '@/context/AuthContext'
 import { User } from 'firebase/auth'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Task, HistoricalTask, UserPreferences, SuggestedTask, TaskDetailPopupProps, SuggestedTaskCardProps } from '@/types'
+import { Task, HistoricalTask, UserPreferences, SuggestedTask, //TaskDetailPopupProps, SuggestedTaskCardProps 
+  } from '@/types'
 import { Toast } from '@/components/Toast'
 
-// type Task = {
-//   id?: string
-//   startTime: number
-//   duration: number
-//   activity: string
-//   isPriority: boolean
-//   description?: string
-//   createdAt: number
-//   userId?: string
-//   date: string
-//   completed?: boolean
-//   reminderSent?: boolean  // Add this field
-// }
 
-// type UserPreferences = {
-//   userId: string;
-//   emailReminders: boolean;
-//   reminderTime: number; // minutes before task
-//   email: string;
-// }
-// type TimeBlock = {
-//   start: number
-//   end: number
-// }
 
-// type HistoricalTask = Task & {
-//   originalDate: string  // The date it was originally planned for
-//   actualDate: string   // The date it was actually executed
-// }
 
-// type SuggestedTask = {
-//   activity: string
-//   description: string
-//   startTime: number
-//   duration: number
-//   confidence: number // 0-100
-//   reasoning: string
-// }
 
 const formatDate = (date: Date) => format(date, 'yyyy-MM-dd')
 const today = formatDate(new Date())
@@ -292,12 +258,15 @@ const findTimeConflicts = (newTask: Task, existingTasks: Task[]) => {
   return existingTasks.filter(task => hasTimeConflict(newTask, task));
 };
 
+// Update the type where setTomorrowTasks is passed as a prop
+type SetTomorrowTasksFunction = (tasks: Task[] | ((prevTasks: Task[]) => Task[])) => void
+
 const handleTaskReplacement = async (
   newTask: Task, 
   conflictingTasks: Task[], 
   user: User,
-  setTomorrowTasks: (tasks: Task[]) => void,
-  setPlannedHours: (hours: number) => void
+  setTomorrowTasks: SetTomorrowTasksFunction,
+  // setPlannedHours: (hours: number) => void
 ) => {
   if (!user) return;
 
@@ -330,10 +299,10 @@ const handleTaskReplacement = async (
     );
 
     // Update planned hours
-    setPlannedHours(prevHours => {
-      const removedHours = conflictingTasks.reduce((total, task) => total + task.duration, 0);
-      return prevHours - removedHours + newTask.duration;
-    });
+    // setPlannedHours(prevHours => {
+    //   const removedHours = conflictingTasks.reduce((total, task) => total + task.duration, 0);
+    //   return prevHours - removedHours + newTask.duration;
+    // });
 
     return true;
   } catch (error) {
@@ -345,12 +314,12 @@ const handleTaskReplacement = async (
 const SuggestedTaskCard = ({ 
   suggestion, 
   theme, 
-  onAccept,
+  // onAccept,
   existingTasks,
   onRemove,
   user,
   setTomorrowTasks,
-  setPlannedHours
+  // setPlannedHours
 }: { 
   suggestion: SuggestedTask
   theme: string
@@ -358,8 +327,8 @@ const SuggestedTaskCard = ({
   existingTasks: Task[]
   onRemove: () => void
   user: User | null
-  setTomorrowTasks: (tasks: Task[]) => void
-  setPlannedHours: (hours: number | ((prev: number) => number)) => void
+  setTomorrowTasks: SetTomorrowTasksFunction
+  // setPlannedHours: (hours: number | ((prev: number) => number)) => void
 }) => {
   const [showConflict, setShowConflict] = useState(false);
   const [conflictingTasks, setConflictingTasks] = useState<Task[]>([]);
@@ -371,7 +340,7 @@ const SuggestedTaskCard = ({
       duration: suggestion.duration,
       activity: suggestion.activity,
       description: suggestion.description,
-      isPriority: suggestion.confidence >= 80,
+      isPriority: (suggestion.confidence ?? 0) >= 80,
       createdAt: Date.now(),
       date: tomorrow,
       completed: false
@@ -407,7 +376,7 @@ const SuggestedTaskCard = ({
       const updatedTasks = [...existingTasks, taskWithId].sort((a, b) => a.startTime - b.startTime);
       setTomorrowTasks(updatedTasks);
       
-      setPlannedHours(prev => prev + newTask.duration);
+      // setPlannedHours(prev => prev + newTask.duration);
       onRemove();
     } catch (error) {
       console.error('Error adding task:', error);
@@ -427,7 +396,7 @@ const SuggestedTaskCard = ({
         duration: suggestion.duration,
         activity: suggestion.activity,
         description: suggestion.description,
-        isPriority: suggestion.confidence >= 80,
+        isPriority: (suggestion.confidence ?? 0) >= 80,
         createdAt: Date.now(),
         date: tomorrow,
         completed: false
@@ -438,7 +407,7 @@ const SuggestedTaskCard = ({
         conflictingTasks,
         user, // Now guaranteed to be non-null
         setTomorrowTasks,
-        setPlannedHours
+        // setPlannedHours
       );
 
       if (success) {
@@ -480,9 +449,9 @@ const SuggestedTaskCard = ({
               </span>
               <span className={`
                 text-xs font-medium
-                ${suggestion.confidence >= 80
+                ${suggestion.confidence ?? 0 >= 80
                   ? theme === 'dark' ? 'text-green-400' : 'text-green-600'
-                  : suggestion.confidence >= 50
+                  : (suggestion.confidence ?? 0) >= 50
                   ? theme === 'dark' ? 'text-yellow-400' : 'text-yellow-600'
                   : theme === 'dark' ? 'text-red-400' : 'text-red-600'
                 }
@@ -599,13 +568,13 @@ export default function DailyTaskManager() {
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [currentHour, setCurrentHour] = useState(new Date().getHours())
   const [isLoading, setIsLoading] = useState(true)
-  const [completedPriorities, setCompletedPriorities] = useState<number>(0)
+  // const [completedPriorities, setCompletedPriorities] = useState<number>(0)
   const [showFullSchedule, setShowFullSchedule] = useState(false)
   const [showDetailPopup, setShowDetailPopup] = useState(false)
   const [suggestions, setSuggestions] = useState<SuggestedTask[]>([])
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
-  const [plannedHours, setPlannedHours] = useState(0);
-  const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null)
+  // const [plannedHours, setPlannedHours] = useState(0);
+  // const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null)
   // Add this state to manage the collapse state
   const [isSuggestionsExpanded, setIsSuggestionsExpanded] = useState(false);
   // Add this near the top where other state variables are defined
@@ -812,26 +781,26 @@ Your Task Manager`,
   useEffect(() => {
     if (!user) return
   
-    const loadPreferences = async () => {
-      const prefsDoc = await getDoc(doc(db, 'userPreferences', user.uid))
+    const loadPreferences = async (): Promise<void> => {
+      if (!user) return;
+
+      const prefsDoc = await getDoc(doc(db, 'userPreferences', user.uid));
       
       if (prefsDoc.exists()) {
-        setUserPreferences(prefsDoc.data() as UserPreferences)
+        console.log('User preferences loaded:', prefsDoc.data());
       } else {
-        // Create default preferences
         const defaultPrefs: UserPreferences = {
           userId: user.uid,
           emailReminders: true,
           reminderTime: 10,
           email: user.email || '',
-        }
+        };
         
-        await setDoc(doc(db, 'userPreferences', user.uid), defaultPrefs)
-        setUserPreferences(defaultPrefs)
+        await setDoc(doc(db, 'userPreferences', user.uid), defaultPrefs);
       }
-    }
+    };
   
-    loadPreferences()
+    loadPreferences();
   }, [user])
 
   const handleMidnightTransition = async () => {
@@ -954,7 +923,7 @@ Your Task Manager`,
 
   useEffect(() => {
     const completed = getCurrentTasks().filter(task => task.isPriority && task.completed).length
-    setCompletedPriorities(completed)
+    // setCompletedPriorities(completed)
   }, [todayTasks, tomorrowTasks, showTomorrow])
 
   useEffect(() => {
@@ -1074,6 +1043,8 @@ Your Task Manager`,
   }
 
   const handleTaskUpdate = async (task: Task, updates: Partial<Task>) => {
+    if (!task.id) return;  // Add this check
+    
     try {
       const updatedTask = {
         ...task,
@@ -1197,9 +1168,9 @@ Your Task Manager`,
     setSelectionEnd(null)
   }
 
-  const isActiveHour = (hour: number) => {
-    return activeHours.some(block => hour >= block.start && hour <= block.end)
-  }
+  // const isActiveHour = (hour: number) => {
+  //   return activeHours.some(block => hour >= block.start && hour <= block.end)
+  // }
 
   const priorityTasksCount = getCurrentTasks().filter(task => task.isPriority).length
   const completedTasksCount = getCurrentTasks().filter(task => task.completed).length
@@ -1208,9 +1179,9 @@ Your Task Manager`,
   ).length
   const totalTasksCount = getCurrentTasks().length
 
-  const [activeHours, setActiveHours] = useState<TimeBlock[]>([
-    { start: 6, end: 22 }
-  ])
+  // const [activeHours, setActiveHours] = useState<TimeBlock[]>([
+  //   { start: 6, end: 22 }
+  // ])
 
   const handleTaskComplete = async (task: Task) => {
     handleTaskUpdate(task, { completed: !task.completed })
@@ -1419,12 +1390,12 @@ Your Task Manager`,
 
 
 
-  useEffect(() => {
-    if (tomorrowTasks) {
-      const totalHours = tomorrowTasks.reduce((total, task) => total + task.duration, 0);
-      setPlannedHours(totalHours);
-    }
-  }, [tomorrowTasks]);
+  // useEffect(() => {
+  //   if (tomorrowTasks) {
+      // const totalHours = tomorrowTasks.reduce((total, task) => total + task.duration, 0);
+      // setPlannedHours(totalHours);
+    // }
+  // }, [tomorrowTasks]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type })
@@ -2026,7 +1997,7 @@ Your Task Manager`,
                                 }}
                                 user={user}
                                 setTomorrowTasks={setTomorrowTasks}
-                                setPlannedHours={setPlannedHours}
+                                // setPlannedHours={setPlannedHours}
                               />
                             ))}
                           </div>
@@ -2192,7 +2163,7 @@ Your Task Manager`,
                             }}
                             user={user}
                             setTomorrowTasks={setTodayTasks}
-                            setPlannedHours={setPlannedHours}
+                            // setPlannedHours={setPlannedHours}
                           />
                         ))}
                       </div>

@@ -5,8 +5,8 @@ import nodemailer from 'nodemailer'
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: "blaisemu007@gmail.com",
-    pass: "txup cbhg qrik eueb", // Use app-specific password
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD,
   },
 })
 
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
     // Send email
     await transporter.sendMail({
-      from: `"Task Manager" <${"blaisemu007@gmail.com"}>`,
+      from: `"Task Manager" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       text,

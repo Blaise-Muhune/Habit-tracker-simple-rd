@@ -9,9 +9,10 @@ export interface Task {
   isPriority: boolean
   completed: boolean
   date: string
-  userId: string
+  userId?: string
   category?: string
   reminderSent?: boolean
+  createdAt: number
 }
 
 export interface HistoricalTask extends Task {
@@ -57,6 +58,6 @@ export interface SuggestedTaskCardProps {
   existingTasks: Task[]
   onRemove: () => void
   user: User | null
-  setTomorrowTasks: (tasks: Task[]) => void
+  setTomorrowTasks: (tasks: Task[] | ((prevTasks: Task[]) => Task[])) => void
   setPlannedHours: (hours: number | ((prev: number) => number)) => void
 } 
