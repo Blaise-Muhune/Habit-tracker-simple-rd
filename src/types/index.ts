@@ -1,3 +1,5 @@
+import { User } from 'firebase/auth'
+
 export interface Task {
   id?: string
   startTime: number
@@ -46,6 +48,7 @@ export interface TaskDetailPopupProps {
   onPriorityToggle: () => void
   onDelete: () => void
 }
+
 
 export interface SuggestedTaskCardProps {
   suggestion: SuggestedTask

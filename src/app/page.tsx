@@ -25,20 +25,47 @@ import { useAuth } from '@/context/AuthContext'
 import { User } from 'firebase/auth'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import {
-  Task,
-  HistoricalTask,
-  UserPreferences,
-  SuggestedTask,
-  TaskDetailPopupProps,
-  SuggestedTaskCardProps
-} from '@/types'
+import { Task, HistoricalTask, UserPreferences, SuggestedTask, TaskDetailPopupProps, SuggestedTaskCardProps } from '@/types'
+import { Toast } from '@/components/Toast'
 
-// Time block type can stay here since it's only used in this component
-type TimeBlock = {
-  start: number
-  end: number
-}
+// type Task = {
+//   id?: string
+//   startTime: number
+//   duration: number
+//   activity: string
+//   isPriority: boolean
+//   description?: string
+//   createdAt: number
+//   userId?: string
+//   date: string
+//   completed?: boolean
+//   reminderSent?: boolean  // Add this field
+// }
+
+// type UserPreferences = {
+//   userId: string;
+//   emailReminders: boolean;
+//   reminderTime: number; // minutes before task
+//   email: string;
+// }
+// type TimeBlock = {
+//   start: number
+//   end: number
+// }
+
+// type HistoricalTask = Task & {
+//   originalDate: string  // The date it was originally planned for
+//   actualDate: string   // The date it was actually executed
+// }
+
+// type SuggestedTask = {
+//   activity: string
+//   description: string
+//   startTime: number
+//   duration: number
+//   confidence: number // 0-100
+//   reasoning: string
+// }
 
 const formatDate = (date: Date) => format(date, 'yyyy-MM-dd')
 const today = formatDate(new Date())
@@ -50,76 +77,6 @@ const formatTime = (hour: number) => {
   return `${displayHour.toString().padStart(2, '0')}:00 ${period}`
 }
 
-const sampleData = {
-  today: [
-    {
-      startTime: 6,
-      duration: 1,
-      activity: "Morning Exercise",
-      isPriority: true,
-      description: "Start the day with energy",
-      createdAt: Date.now(),
-      date: today,
-    },
-    {
-      startTime: 8,
-      duration: 2,
-      activity: "Deep Work: Project Planning",
-      isPriority: true,
-      description: "Focus on most important tasks first",
-      createdAt: Date.now(),
-      date: today,
-    },
-    {
-      startTime: 12,
-      duration: 1,
-      activity: "Mindful Lunch Break",
-      isPriority: false,
-      description: "No screens, just eating and short walk",
-      createdAt: Date.now(),
-      date: today,
-    },
-    {
-      startTime: 16,
-      duration: 1,
-      activity: "Learning: New Tech Stack",
-      isPriority: true,
-      description: "Building foundations for growth",
-      createdAt: Date.now(),
-      date: today,
-    }
-  ],
-  tomorrow: [
-    {
-      startTime: 7,
-      duration: 1,
-      activity: "Meditation & Planning",
-      isPriority: true,
-      description: "Set intentions for the day",
-      createdAt: Date.now(),
-      date: tomorrow,
-    },
-    {
-      startTime: 9,
-      duration: 2,
-      activity: "Code Review & Team Sync",
-      isPriority: true,
-      description: "Help team move forward",
-      createdAt: Date.now(),
-      date: tomorrow,
-    },
-    {
-      startTime: 15,
-      duration: 2,
-      activity: "Feature Development",
-      isPriority: true,
-      description: "Focus on core functionality",
-      createdAt: Date.now(),
-      date: tomorrow,
-    }
-  ]
-}
-
 const TaskDetailPopup = ({ 
   task, 
   onClose, 
@@ -128,7 +85,15 @@ const TaskDetailPopup = ({
   onModify,
   onPriorityToggle,
   onDelete
-}: TaskDetailPopupProps) => {
+}: {
+  task: Task
+  onClose: () => void
+  theme: string
+  isEditMode: boolean
+  onModify: () => void
+  onPriorityToggle: () => void
+  onDelete: () => void
+}) => {
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <motion.div
@@ -386,7 +351,16 @@ const SuggestedTaskCard = ({
   user,
   setTomorrowTasks,
   setPlannedHours
-}: SuggestedTaskCardProps) => {
+}: { 
+  suggestion: SuggestedTask
+  theme: string
+  onAccept: (task: Partial<Task>) => void
+  existingTasks: Task[]
+  onRemove: () => void
+  user: User | null
+  setTomorrowTasks: (tasks: Task[]) => void
+  setPlannedHours: (hours: number | ((prev: number) => number)) => void
+}) => {
   const [showConflict, setShowConflict] = useState(false);
   const [conflictingTasks, setConflictingTasks] = useState<Task[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -637,8 +611,13 @@ export default function DailyTaskManager() {
   // Add this near the top where other state variables are defined
   const [isPremiumUser, setIsPremiumUser] = useState(false);
   const router = useRouter()
+  const [toast, setToast] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'info';
+  } | null>(null)
 
-  const getCurrentTasks = () => showTomorrow ? tomorrowTasks : todayTasks
+  const getCurrentTasks = () => showTomorrow ? tomorrowTasks : todayTasks;
+
   const setCurrentTasks = (tasks: Task[]) => {
     if (showTomorrow) {
       setTomorrowTasks(tasks)
@@ -648,20 +627,38 @@ export default function DailyTaskManager() {
   }
 
   const checkAndSendReminder = async (task: Task) => {
-    if (!user?.email || task.reminderSent) return
-  
-    const taskDate = new Date(task.date)
-    taskDate.setHours(task.startTime)
-    taskDate.setMinutes(0)
+    console.log('Checking reminder for task:', task.activity);
+    console.log('Task date string:', task.date);
     
-    // Calculate 10 minutes before task time
-    const reminderTime = new Date(taskDate.getTime() - 10 * 60000)
-    const now = new Date()
+    if (!user?.email || task.reminderSent) {
+      console.log('Skipping reminder - no user email or reminder already sent');
+      return;
+    }
+
+    // Parse the date string correctly
+    const [year, month, day] = task.date.split('-').map(num => parseInt(num));
+    const taskDate = new Date(year, month - 1, day); // month is 0-based in JavaScript
+    taskDate.setHours(task.startTime);
+    taskDate.setMinutes(0);
+    taskDate.setSeconds(0);
     
-    // If we're within 1 minute of the reminder time and reminder hasn't been sent
-    if (Math.abs(reminderTime.getTime() - now.getTime()) < 60000) {
+    const reminderTime = new Date(taskDate.getTime() - /*userPreferences?.reminderTime*/ 10 * 60000);
+    const now = new Date();
+
+    console.log('Task date:', taskDate.toLocaleString());
+    console.log('Reminder time:', reminderTime.toLocaleString());
+    console.log('Current time:', now.toLocaleString());
+
+    const isWithinTwoMinute = Math.abs(reminderTime.getTime() - now.getTime()) < 60000 *2;
+    const isSameDay = taskDate.toDateString() === now.toDateString();
+
+    console.log('Is within 2 minute:', isWithinTwoMinute);
+    console.log('Is same day:', isSameDay);
+
+    if (isWithinTwoMinute && isSameDay) {
+      console.log('Sending reminder for task:', task.activity);
       try {
-        // Send email reminder using the authenticated user's email
+        // Send email reminder
         await fetch('/api/send-reminder', {
           method: 'POST',
           headers: {
@@ -671,15 +668,15 @@ export default function DailyTaskManager() {
             to: user.email,
             subject: `Reminder: ${task.activity} in 10 minutes`,
             text: `Hi ${user.displayName || 'there'},
-  
-  Your task "${task.activity}" starts in 10 minutes at ${formatTime(task.startTime)}.
-  ${task.description ? `\nDescription: ${task.description}` : ''}
-  
-  Best regards,
-  Your Task Manager`,
+
+Your task "${task.activity}" starts in 10 minutes at ${formatTime(task.startTime)}.
+${task.description ? `\nDescription: ${task.description}` : ''}
+
+Best regards,
+Your Task Manager`,
           }),
         })
-  
+
         // Update task to mark reminder as sent
         if (task.id) {
           await updateDoc(doc(db, 'tasks', task.id), {
@@ -690,7 +687,7 @@ export default function DailyTaskManager() {
         console.error('Error sending reminder:', error)
       }
     }
-  }
+  };
 
   const PremiumUpgradePrompt = () => (
     <div className={`
@@ -720,7 +717,7 @@ export default function DailyTaskManager() {
             }
           `}
         >
-          Upgrade to Premium
+          Upgrade to Pro
         </Link>
       </div>
     </div>
@@ -741,18 +738,34 @@ export default function DailyTaskManager() {
   }, [])
 
   useEffect(() => {
-    if (!user || !user.email) return
-  
-    // Check for reminders every minute
+    console.log('Setting up reminder interval');
+    if (!user || !user.email) {
+      console.log('No user or email - skipping reminder setup');
+      return;
+    }
+
+    // Check immediately when component mounts
+    const tasks = getCurrentTasks();
+    console.log('Current tasks:', tasks);
+    tasks.forEach(task => {
+      checkAndSendReminder(task);
+    });
+
+    // Set up the interval
     const reminderInterval = setInterval(() => {
-      const tasks = getCurrentTasks()
-      tasks.forEach(task => {
-        checkAndSendReminder(task)
-      })
-    }, 60000) // Check every minute
-  
-    return () => clearInterval(reminderInterval)
-  }, [user, todayTasks, tomorrowTasks])
+      console.log('Checking reminders...');
+      const currentTasks = getCurrentTasks();
+      currentTasks.forEach(task => {
+        checkAndSendReminder(task);
+      });
+    }, 60000); // Check every minute
+
+    // Cleanup interval on unmount
+    return () => {
+      console.log('Cleaning up reminder interval');
+      clearInterval(reminderInterval);
+    };
+  }, [user, todayTasks, tomorrowTasks, showTomorrow]); // Add showTomorrow to dependencies
 
   useEffect(() => {
     if (!showTomorrow) {
@@ -1005,18 +1018,6 @@ export default function DailyTaskManager() {
 
   const hours = Array.from({ length: 24 }, (_, i) => i)
 
-  const prepareTask = (task: Partial<Task>): Task => ({
-    startTime: task.startTime || 0,
-    duration: task.duration || 1,
-    activity: task.activity || '',
-    isPriority: task.isPriority || false,
-    description: task.description || '',
-    createdAt: task.createdAt || Date.now(),
-    date: task.date || (showTomorrow ? tomorrow : today),
-    userId: user?.uid || '',
-    completed: task.completed || false
-  })
-
   const saveTask = async (task: Task) => {
     if (!user || !canModifyTasks()) return
 
@@ -1073,11 +1074,9 @@ export default function DailyTaskManager() {
   }
 
   const handleTaskUpdate = async (task: Task, updates: Partial<Task>) => {
-    if (!task.id || !user) return
-
     try {
-      const updatedTask = { 
-        ...task, 
+      const updatedTask = {
+        ...task,
         ...updates,
         date: showTomorrow ? tomorrow : today
       }
@@ -1087,7 +1086,7 @@ export default function DailyTaskManager() {
       ))
     } catch (error) {
       console.error('Error updating task:', error)
-      alert('Failed to update task. Please try again.')
+      showToast('Failed to update task. Please try again.', 'error')
     }
   }
 
@@ -1114,12 +1113,12 @@ export default function DailyTaskManager() {
 
   const handleHourClick = (hour: number) => {
     if (!canModifyTasks()) {
-      alert("Switch to edit mode to modify tasks.")
+      showToast("Switch to edit mode to modify tasks.", 'info')
       return
     }
 
     if (!user) {
-      alert('Please sign in to create tasks')
+      showToast('Please sign in to create tasks', 'info')
       return
     }
 
@@ -1171,7 +1170,7 @@ export default function DailyTaskManager() {
     })
 
     if (hasOverlap) {
-      alert('Cannot create task: Time slot overlaps with existing task')
+      showToast('Cannot create task: Time slot overlaps with existing task', 'error')
       setIsCombineMode(false)
       setSelectionStart(null)
       setSelectionEnd(null)
@@ -1418,17 +1417,7 @@ export default function DailyTaskManager() {
     return hours.filter(hour => getTaskAtHour(hour) || hour === currentHour)
   }
 
-  const handleTaskClick = (task: Task) => {
-    if (showFullSchedule) {
-      // Direct to edit mode
-      setEditingTask(task)
-      setShowTaskModal(true)
-    } else {
-      // Show detail popup first
-      setEditingTask(task)
-      setShowDetailPopup(true)
-    }
-  }
+
 
   useEffect(() => {
     if (tomorrowTasks) {
@@ -1436,6 +1425,10 @@ export default function DailyTaskManager() {
       setPlannedHours(totalHours);
     }
   }, [tomorrowTasks]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+  }
 
   if (isLoading) {
     return (
@@ -1463,6 +1456,15 @@ export default function DailyTaskManager() {
       ? 'bg-[#0B1120] text-white' // Deep space blue background
       : 'bg-[#F0F4FF] text-slate-900'
     }`}>
+      {/* Add Toast component near the top of your JSX */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       {/* Animated gradient background */}
       <div className="fixed inset-0 bg-grid-pattern opacity-5" /> {/* Add a subtle grid pattern */}
       
@@ -1511,14 +1513,18 @@ export default function DailyTaskManager() {
                     )}
                   </div>
 
-                  {/* Updated Dropdown Menu */}
-                  <div className={`absolute right-0 mt-2 w-48 py-2 rounded-xl shadow-lg opacity-0 invisible
-                    group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10
+                  {/* Updated Dropdown Menu - Added right-0 sm:right-auto positioning */}
+                  <div className={`
+                    absolute left-0 sm:right-auto mt-2 w-48 py-2 rounded-xl shadow-lg 
+                    opacity-0 invisible group-hover:opacity-100 group-hover:visible 
+                    transition-all duration-200 z-10
                     ${theme === 'dark' 
                       ? 'bg-slate-800 border border-slate-700' 
                       : 'bg-white border border-slate-200'
-                    }`}
-                  >
+                    }
+                    translate-x-0 sm:translate-x-0
+                    ${window.innerWidth < 640 ? '-translate-x-[calc(100%-44px)]' : ''}
+                  `}>
                     {/* Analytics Link - Only show for premium users */}
                     {isPremiumUser && (
                       <Link
@@ -1563,36 +1569,7 @@ export default function DailyTaskManager() {
                             d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
                           />
                         </svg>
-                        {isPremiumUser ? 'Manage Premium' : 'Upgrade to Premium'}
-                      </div>
-                    </Link>
-
-                    {/* Settings Link (optional) */}
-                    <Link
-                      href="/settings"
-                      className={`block px-4 py-2 text-sm
-                        ${theme === 'dark'
-                          ? 'text-slate-300 hover:bg-slate-700'
-                          : 'text-slate-700 hover:bg-slate-50'
-                        }
-                      `}
-                    >
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
-                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                          />
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
-                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                        </svg>
-                        Settings
+                        {isPremiumUser ? 'Manage Premium' : 'Upgrade to Pro'}
                       </div>
                     </Link>
 
@@ -1643,39 +1620,7 @@ export default function DailyTaskManager() {
             </div>
           </div>
 
-          {/* Add edit mode indicator HERE - before the stats card */}
-          {!showTomorrow && showFullSchedule && (
-            <div className={`
-              p-4 rounded-xl
-              ${theme === 'dark'
-                ? 'bg-violet-500/20 border border-violet-500/10'
-                : 'bg-violet-50 border border-violet-100'
-              }
-            `}>
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className={`font-medium ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}>
-                    Edit Mode Active
-                  </p>
-                  <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                    You can now modify today's schedule
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowFullSchedule(false)}
-                  className={`
-                    px-4 py-2 rounded-lg text-sm font-medium
-                    ${theme === 'dark'
-                      ? 'bg-slate-800 hover:bg-slate-700'
-                      : 'bg-white hover:bg-slate-50'
-                    }
-                  `}
-                >
-                  Exit Edit Mode
-                </button>
-              </div>
-            </div>
-          )}
+          
 
           {/* Gaming-style stats card */}
           <div className={`p-6 rounded-2xl border-2 backdrop-blur-xl
@@ -1761,6 +1706,7 @@ export default function DailyTaskManager() {
                       />
                     </svg>
                     Plan Tomorrow
+
                     {showTomorrow && (
                       <span className={`
                         absolute -top-1 -right-1 w-2 h-2 rounded-full
@@ -1770,29 +1716,47 @@ export default function DailyTaskManager() {
                     )}
                   </button>
                   {/* Add this near your other main navigation buttons */}
-                  {isPremiumUser && (
+                  {(
                     <Link
-                      href="/analytics"
+                      href={isPremiumUser ? '/analytics' : '/premium'}
                       className={`
                         p-2 rounded-lg transition-colors flex items-center gap-2
-                        ${theme === 'dark'
-                          ? 'bg-violet-500/20 text-violet-400 hover:bg-violet-500/30'
-                          : 'bg-violet-50 text-violet-600 hover:bg-violet-100'
+                        ${!isPremiumUser 
+                          ? theme === 'dark'
+                            ? 'bg-slate-700/50 text-slate-400 cursor-not-allowed'
+                            : 'bg-slate-100/50 text-slate-500 cursor-not-allowed'
+                          : theme === 'dark'
+                            ? 'bg-violet-500/20 text-violet-400 hover:bg-violet-500/30'
+                            : 'bg-violet-50 text-violet-600 hover:bg-violet-100'
                         }
                       `}
-    title="View Analytics"
-  >
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path 
-        strokeLinecap="round" 
-        strokeLinejoin="round" 
-        strokeWidth={2} 
-        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-      />
-    </svg>
-                    <span className="hidden sm:inline">Analytics</span>
-                  </Link>
-                )}
+
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth={2} 
+                          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                        />
+                      </svg>
+                      <span className="hidden sm:inline">
+                        {isPremiumUser ? 'View Analytics' : 'Analytics'}
+                      </span>
+                      {!isPremiumUser && (
+                        <span className={`
+                          ml-1 px-1.5 py-0.5 text-xs rounded-full
+                          ${theme === 'dark' 
+                            ? 'bg-violet-500/20 text-violet-400' 
+                            : 'bg-violet-100 text-violet-600'
+                          }
+                        `}>
+                          PRO
+                        </span>
+                      )}
+                    </Link>
+                  )}
+                
                 </div>
               </div>
 
@@ -1971,7 +1935,7 @@ export default function DailyTaskManager() {
                           <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
                             {isPremiumUser 
                               ? 'Based on your previous activities'
-                              : 'Upgrade to Premium to unlock AI suggestions'}
+                              : 'Upgrade to Pro to unlock AI suggestions'}
                           </p>
                         </div>
                       </div>
@@ -1980,7 +1944,7 @@ export default function DailyTaskManager() {
                         // Existing premium user controls
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={(e) => {
+                      onClick={(e) => {
                               e.stopPropagation();
                               loadSuggestions();
                             }}
@@ -2022,7 +1986,7 @@ export default function DailyTaskManager() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            router.push('/premium');
+                          router.push('/premium');
                           }}
                           className={`
                             px-4 py-2 rounded-lg text-sm font-medium
@@ -2115,7 +2079,8 @@ export default function DailyTaskManager() {
           )}
 
           {/* Show AI Suggestions when in edit mode for Today */}
-          {!showTomorrow && showFullSchedule && isPremiumUser && (
+          {!showTomorrow && showFullSchedule && (
+          ( isPremiumUser) ?(
             <div className="max-w-4xl mx-auto mb-6">
               <motion.div
                 layout
@@ -2127,11 +2092,11 @@ export default function DailyTaskManager() {
                   }
                 `}
               >
+                
                 <div
-                  onClick={() => isPremiumUser && setIsSuggestionsExpanded(prev => !prev)}
+                  onClick={() => setIsSuggestionsExpanded(prev => !prev)}
                   className={`
-                    w-full p-4 flex items-center justify-between
-                    ${isPremiumUser ? 'cursor-pointer' : 'cursor-default'}
+                    w-full p-4 flex items-center justify-between cursor-pointer
                     ${theme === 'dark' ? 'hover:bg-slate-700/50' : 'hover:bg-slate-50'}
                     transition-colors
                   `}
@@ -2143,13 +2108,13 @@ export default function DailyTaskManager() {
                       viewBox="0 0 24 24" 
                       stroke="currentColor"
                     >
-                      <path 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        strokeWidth={2} 
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth={2} 
                         d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                      />
-                    </svg>
+                        />
+                      </svg>
                     <div className="text-left">
                       <h2 className={`text-lg font-medium
                         ${theme === 'dark' ? 'text-white' : 'text-slate-900'}
@@ -2236,8 +2201,41 @@ export default function DailyTaskManager() {
                 )}
               </motion.div>
             </div>
-          )}
+          ): (<PremiumUpgradePrompt />))}
 
+          {/* Add edit mode indicator HERE - before the stats card */}
+          {!showTomorrow && showFullSchedule && (
+            <div className={`
+              p-4 rounded-xl
+              ${theme === 'dark'
+                ? 'bg-violet-500/20 border border-violet-500/10'
+                : 'bg-violet-50 border border-violet-100'
+              }
+            `}>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className={`font-medium ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}>
+                    Edit Mode Active
+                  </p>
+                  <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                    You can now modify today's schedule
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowFullSchedule(false)}
+                  className={`
+                    px-4 py-2 rounded-lg text-sm font-medium
+                    ${theme === 'dark'
+                      ? 'bg-slate-800 hover:bg-slate-700'
+                      : 'bg-white hover:bg-slate-50'
+                    }
+                  `}
+                >
+                  Exit Edit Mode
+                </button>
+              </div>
+            </div>
+          )}
           {/* Task list with gaming aesthetic */}
           <div className="relative">
             {/* Add visual distinction for tomorrow's view */}
@@ -2257,7 +2255,7 @@ export default function DailyTaskManager() {
                   }
                 `}>
                   Planning Ahead
-                </span>
+                      </span>
               </div>
             )}
 
@@ -2279,11 +2277,13 @@ export default function DailyTaskManager() {
                         if (showFullSchedule) {
                           // If in edit mode, go straight to edit
                           setEditingTask(task)
-                          setShowTaskModal(true)
+                          // setShowTaskModal(true)
     } else {
                           // If not in edit mode, show detail popup
                           setEditingTask(task)
-                          setShowDetailPopup(true)
+                          // setShowDetailPopup(true)
+                          setShowTaskModal(true)
+
                         }
                       }
                     }}
@@ -2475,7 +2475,7 @@ export default function DailyTaskManager() {
                     whileHover={{ scale: canModifyTasks() ? 1.02 : 1 }}
                   >
                     <div className="flex items-center gap-2">
-                      <span className={`
+                        <span className={`
                         text-xs sm:text-sm font-medium
                         ${isCurrentHour
                           ? theme === 'dark' ? 'text-red-400' : 'text-red-600'
@@ -2490,7 +2490,7 @@ export default function DailyTaskManager() {
                         <div className="flex items-center gap-2">
                           <span className={`
                             text-xs px-2 py-0.5 rounded-full animate-pulse
-                            ${theme === 'dark' 
+                          ${theme === 'dark' 
                               ? 'bg-red-500/20 text-red-400' 
                               : 'bg-red-50 text-red-600'
                             }
@@ -2683,7 +2683,7 @@ export default function DailyTaskManager() {
 
       {/* Add button to return to compact view */}
       {!showTomorrow && showFullSchedule && (
-        <div className="fixed bottom-8 right-8">
+        <div className="fixed bottom-8 right-8 z-50">
           <button
             onClick={() => setShowFullSchedule(false)}
             className={`

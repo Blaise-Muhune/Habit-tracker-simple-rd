@@ -7,6 +7,11 @@ import { doc, setDoc, getDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { loadStripe } from '@stripe/stripe-js'
+import { Toast } from '@/components/Toast'
+
+// Initialize Stripe
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
 // Add this type for premium status
 type PremiumStatus = {
@@ -25,6 +30,11 @@ const PremiumPage = () => {
   const [premiumStatus, setPremiumStatus] = useState<PremiumStatus>({
     isPremium: false
   })
+  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('monthly')
+  const [toast, setToast] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'info';
+  } | null>(null)
 
   useEffect(() => {
     const checkPremiumStatus = async () => {
@@ -48,37 +58,55 @@ const PremiumPage = () => {
     checkPremiumStatus()
   }, [user])
 
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+  }
+
   const handleUpgrade = async () => {
     if (!user) {
-      alert('Please sign in to upgrade')
+      showToast('Please sign in to upgrade', 'info')
       return
     }
 
     setIsLoading(true)
     try {
-      const now = new Date()
-      const nextMonth = new Date(now)
-      nextMonth.setMonth(nextMonth.getMonth() + 1)
-
-      await setDoc(doc(db, 'users', user.uid), {
-        isPremium: true,
-        premiumStartDate: now.toISOString(),
-        nextBillingDate: nextMonth.toISOString(),
-        premiumPlan: 'monthly'
-      }, { merge: true })
-
-      setPremiumStatus({
-        isPremium: true,
-        startDate: now.toISOString(),
-        nextBillingDate: nextMonth.toISOString(),
-        plan: 'monthly'
+      // Create Stripe Checkout Session
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.uid,
+          plan: selectedPlan,
+          email: user.email,
+        }),
       })
 
-      alert('Successfully upgraded to premium!')
-      router.push('/')
-    } catch (error) {
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create checkout session')
+      }
+
+      const data = await response.json()
+      
+      // Get Stripe instance
+      const stripe = await stripePromise
+      if (!stripe) {
+        throw new Error('Failed to load Stripe')
+      }
+
+      // Redirect to checkout
+      const result = await stripe.redirectToCheckout({
+        sessionId: data.sessionId,
+      })
+
+      if (result.error) {
+        throw new Error(result.error.message)
+      }
+    } catch (error: any) {
       console.error('Error upgrading:', error)
-      alert('Failed to upgrade. Please try again.')
+      showToast(error.message || 'Failed to upgrade. Please try again.', 'error')
     } finally {
       setIsLoading(false)
     }
@@ -86,7 +114,7 @@ const PremiumPage = () => {
 
   const handleCancel = async () => {
     if (!user) {
-      alert('Please sign in first')
+      showToast('Please sign in first', 'info')
       return
     }
 
@@ -104,11 +132,11 @@ const PremiumPage = () => {
           isPremium: false
         })
         
-        alert('Premium subscription cancelled successfully')
+        showToast('Premium subscription cancelled successfully', 'success')
         router.push('/')
       } catch (error) {
         console.error('Error cancelling subscription:', error)
-        alert('Failed to cancel subscription. Please try again.')
+        showToast('Failed to cancel subscription. Please try again.', 'error')
       } finally {
         setIsLoading(false)
       }
@@ -170,6 +198,15 @@ const PremiumPage = () => {
 
   return (
     <div className={`min-h-screen p-8 ${theme === 'dark' ? 'bg-[#0B1120]' : 'bg-[#F0F4FF]'}`}>
+      {/* Render Toast if exists */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+      
       <div className="max-w-4xl mx-auto">
         {/* Back Button */}
         <div className="mb-8">
@@ -260,83 +297,139 @@ const PremiumPage = () => {
         {/* Add Premium Status Component */}
         <PremiumStatus />
 
-        {/* Modified Pricing Card */}
-        <div className={`
-          max-w-md mx-auto rounded-2xl border-2 overflow-hidden
-          ${theme === 'dark'
-            ? 'bg-slate-800/90 border-violet-500/20'
-            : 'bg-white/90 border-violet-100'
-          }
-        `}>
-          <div className="p-8">
-            <div className="flex justify-between items-baseline mb-6">
-              <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                Premium
-              </h2>
-              <span className={`text-5xl font-bold ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}>
-                $9
-                <span className={`text-lg ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                  /mo
+        {/* Modified Pricing Cards */}
+        <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 mb-12">
+          {/* Monthly Plan */}
+          <div className={`
+            rounded-2xl border-2 overflow-hidden
+            ${selectedPlan === 'monthly' ? 'ring-2 ring-violet-500' : ''}
+            ${theme === 'dark'
+              ? 'bg-slate-800/90 border-violet-500/20'
+              : 'bg-white/90 border-violet-100'
+            }
+          `}>
+            <div className="p-8">
+              <div className="flex justify-between items-baseline mb-6">
+                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                  Monthly
+                </h2>
+                <span className={`text-5xl font-bold ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}>
+                  $9
+                  <span className={`text-lg ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                    /mo
+                  </span>
                 </span>
-              </span>
-            </div>
-
-            {premiumStatus.isPremium ? (
+              </div>
               <button
-                onClick={handleCancel}
-                disabled={isLoading}
+                onClick={() => setSelectedPlan('monthly')}
                 className={`
                   w-full py-4 rounded-xl font-semibold
                   transition-all duration-200
-                  ${isLoading ? 'cursor-not-allowed opacity-80' : ''}
-                  ${theme === 'dark'
-                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                    : 'bg-red-50 text-red-600 hover:bg-red-100'
+                  ${selectedPlan === 'monthly'
+                    ? 'bg-gradient-to-r from-violet-600 to-violet-400 text-white'
+                    : theme === 'dark'
+                      ? 'bg-slate-700 text-slate-300'
+                      : 'bg-slate-100 text-slate-600'
                   }
                 `}
               >
-                {isLoading ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    Processing...
-                  </div>
-                ) : (
-                  'Cancel Subscription'
-                )}
+                Select Monthly
               </button>
-            ) : (
+            </div>
+          </div>
+
+          {/* Annual Plan */}
+          <div className={`
+            rounded-2xl border-2 overflow-hidden
+            ${selectedPlan === 'yearly' ? 'ring-2 ring-violet-500' : ''}
+            ${theme === 'dark'
+              ? 'bg-slate-800/90 border-violet-500/20'
+              : 'bg-white/90 border-violet-100'
+            }
+          `}>
+            <div className="p-8">
+              <div className="flex justify-between items-baseline mb-6">
+                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                  Yearly
+                </h2>
+                <div className="text-right">
+                  <span className={`text-5xl font-bold ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}>
+                    $90
+                    <span className={`text-lg ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                      /yr
+                    </span>
+                  </span>
+                  <div className={`text-sm ${theme === 'dark' ? 'text-green-400' : 'text-green-600'}`}>
+                    Save 17%
+                  </div>
+                </div>
+              </div>
               <button
-                onClick={handleUpgrade}
-                disabled={isLoading}
+                onClick={() => setSelectedPlan('yearly')}
                 className={`
-                  w-full py-4 rounded-xl font-semibold text-white
+                  w-full py-4 rounded-xl font-semibold
                   transition-all duration-200
-                  ${isLoading ? 'cursor-not-allowed opacity-80' : ''}
-                  bg-gradient-to-r from-violet-600 to-violet-400
-                  hover:from-violet-500 hover:to-violet-300
-                  active:from-violet-700 active:to-violet-500
+                  ${selectedPlan === 'yearly'
+                    ? 'bg-gradient-to-r from-violet-600 to-violet-400 text-white'
+                    : theme === 'dark'
+                      ? 'bg-slate-700 text-slate-300'
+                      : 'bg-slate-100 text-slate-600'
+                  }
                 `}
               >
-                {isLoading ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Processing...
-                  </div>
-                ) : (
-                  'Upgrade Now'
-                )}
+                Select Yearly
               </button>
-            )}
-
-            <p className={`mt-4 text-center text-sm
-              ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
-            `}>
-              {premiumStatus.isPremium
-                ? 'You currently have an active premium subscription'
-                : 'Upgrade to unlock premium features'}
-            </p>
+            </div>
           </div>
         </div>
+
+        {/* Upgrade/Cancel Button */}
+        {premiumStatus.isPremium ? (
+          <button
+            onClick={handleCancel}
+            disabled={isLoading}
+            className={`
+              max-w-md mx-auto w-full py-4 rounded-xl font-semibold
+              transition-all duration-200 block
+              ${isLoading ? 'cursor-not-allowed opacity-80' : ''}
+              ${theme === 'dark'
+                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                : 'bg-red-50 text-red-600 hover:bg-red-100'
+              }
+            `}
+          >
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                Processing...
+              </div>
+            ) : (
+              'Cancel Subscription'
+            )}
+          </button>
+        ) : (
+          <button
+            onClick={handleUpgrade}
+            disabled={isLoading}
+            className={`
+              max-w-md mx-auto w-full py-4 rounded-xl font-semibold text-white
+              transition-all duration-200 block
+              ${isLoading ? 'cursor-not-allowed opacity-80' : ''}
+              bg-gradient-to-r from-violet-600 to-violet-400
+              hover:from-violet-500 hover:to-violet-300
+              active:from-violet-700 active:to-violet-500
+            `}
+          >
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Processing...
+              </div>
+            ) : (
+              `Upgrade to ${selectedPlan === 'yearly' ? 'Yearly' : 'Monthly'} Plan`
+            )}
+          </button>
+        )}
       </div>
     </div>
   )
