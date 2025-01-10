@@ -104,9 +104,10 @@ const PremiumPage = () => {
       if (result.error) {
         throw new Error(result.error.message)
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error upgrading:', error)
-      showToast(error.message || 'Failed to upgrade. Please try again.', 'error')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upgrade. Please try again.'
+      showToast(errorMessage, 'error')
     } finally {
       setIsLoading(false)
     }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { format, addDays } from 'date-fns'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
@@ -585,7 +585,9 @@ export default function DailyTaskManager() {
     type: 'success' | 'error' | 'info';
   } | null>(null)
 
-  const getCurrentTasks = () => showTomorrow ? tomorrowTasks : todayTasks;
+  const getCurrentTasks = useCallback(() => {
+    return showTomorrow ? tomorrowTasks : todayTasks;
+  }, [showTomorrow, tomorrowTasks, todayTasks]);
 
   const setCurrentTasks = (tasks: Task[]) => {
     if (showTomorrow) {
@@ -734,7 +736,7 @@ Your Task Manager`,
       console.log('Cleaning up reminder interval');
       clearInterval(reminderInterval);
     };
-  }, [user, todayTasks, tomorrowTasks, showTomorrow]); // Add showTomorrow to dependencies
+  }, [user, todayTasks, tomorrowTasks, showTomorrow, getCurrentTasks]); // Added getCurrentTasks
 
   useEffect(() => {
     if (!showTomorrow) {
@@ -827,7 +829,7 @@ Your Task Manager`,
           ...taskData,
           originalDate: yesterday,
           actualDate: yesterday,
-          archivedAt: serverTimestamp()
+          archivedAt: Date.now() // Use current timestamp instead of serverTimestamp()
         } as HistoricalTask)
         
         // Delete the task from main collection
@@ -921,10 +923,10 @@ Your Task Manager`,
     loadTasks()
   }, [user])
 
-  useEffect(() => {
-    const completed = getCurrentTasks().filter(task => task.isPriority && task.completed).length
-    // setCompletedPriorities(completed)
-  }, [todayTasks, tomorrowTasks, showTomorrow])
+  // useEffect(() => {
+  //   const completed = getCurrentTasks().filter(task => task.isPriority && task.completed).length
+  //   // setCompletedPriorities(completed)
+  // }, [todayTasks, tomorrowTasks, showTomorrow])
 
   useEffect(() => {
     if (showTomorrow && user) {
@@ -955,10 +957,10 @@ Your Task Manager`,
     }
   }
 
-  const loadSuggestions = async () => {
-    if (!user) return
+  const loadSuggestions = useCallback(async () => {
+    if (!user) return;
     
-    setIsLoadingSuggestions(true)
+    setIsLoadingSuggestions(true);
     try {
       // Get historical tasks from the last 7 days
       const last7Days = Array.from({ length: 7 }, (_, i) => 
@@ -983,7 +985,7 @@ Your Task Manager`,
     } finally {
       setIsLoadingSuggestions(false)
     }
-  }
+  }, [user]); // Add any other dependencies used in loadSuggestions
 
   const hours = Array.from({ length: 24 }, (_, i) => i)
 
@@ -1190,194 +1192,194 @@ Your Task Manager`,
   useEffect(() => {
     console.log('Current date:', showTomorrow ? 'Tomorrow' : 'Today')
     console.log('Tasks:', getCurrentTasks())
-  }, [showTomorrow, todayTasks, tomorrowTasks])
+  }, [showTomorrow, todayTasks, tomorrowTasks, getCurrentTasks])
 
-  const renderTask = (task: Task, hour: number) => {
-    const isEditable = canModifyTasks()
+  // const renderTask = (task: Task, hour: number) => {
+  //   const isEditable = canModifyTasks()
     
-    return (
-      <motion.div
-        className={`
-          relative rounded-xl p-4 h-full cursor-pointer
-          ${theme === 'dark' 
-            ? 'bg-slate-800/50 hover:bg-slate-800/70' 
-            : 'bg-white hover:bg-slate-50'
-          }
-        `}
-        onClick={(e) => {
-          if (!(e.target as HTMLElement).closest('button')) {
-            if (showFullSchedule) {
-              // If in edit mode, go straight to edit
-              setEditingTask(task)
-              setShowTaskModal(true)
-            } else {
-              // If not in edit mode, show detail popup
-              setEditingTask(task)
-              setShowDetailPopup(true)
-            }
-          }
-        }}
-      >
-        {/* Task content */}
-        <div className="flex items-center justify-between gap-2">
-          <div className={`text-xs sm:text-sm font-medium whitespace-nowrap
-            ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}
-          >
-            {`${formatTime(task.startTime)} - ${formatTime(task.startTime + task.duration)}`}
-          </div>
+  //   return (
+  //     <motion.div
+  //       className={`
+  //         relative rounded-xl p-4 h-full cursor-pointer
+  //         ${theme === 'dark' 
+  //           ? 'bg-slate-800/50 hover:bg-slate-800/70' 
+  //           : 'bg-white hover:bg-slate-50'
+  //         }
+  //       `}
+  //       onClick={(e) => {
+  //         if (!(e.target as HTMLElement).closest('button')) {
+  //           if (showFullSchedule) {
+  //             // If in edit mode, go straight to edit
+  //             setEditingTask(task)
+  //             setShowTaskModal(true)
+  //           } else {
+  //             // If not in edit mode, show detail popup
+  //             setEditingTask(task)
+  //             setShowDetailPopup(true)
+  //           }
+  //         }
+  //       }}
+  //     >
+  //       {/* Task content */}
+  //       <div className="flex items-center justify-between gap-2">
+  //         <div className={`text-xs sm:text-sm font-medium whitespace-nowrap
+  //           ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}
+  //         >
+  //           {`${formatTime(task.startTime)} - ${formatTime(task.startTime + task.duration)}`}
+  //         </div>
           
-          {/* Only render completion button in today's view */}
-          {showTomorrow && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                handleTaskComplete(task)
-              }}
-              className={`
-                group relative px-6 py-4 rounded-2xl transition-all duration-300 
-                transform hover:scale-105 hover:-rotate-1
-                flex items-center gap-4 min-w-[180px]
-                ${task.completed
-                  ? theme === 'dark'
-                    ? 'bg-gradient-to-r from-green-500/30 to-emerald-500/30 text-green-400'
-                    : 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-600'
-                  : theme === 'dark'
-                    ? 'bg-gradient-to-r from-slate-700/80 to-slate-800/80 text-slate-300'
-                    : 'bg-gradient-to-r from-slate-100 to-white text-slate-700'
-                }
-                before:absolute before:inset-0 before:rounded-2xl
-                before:bg-gradient-to-r before:from-transparent before:via-white/5 before:to-transparent
-                before:opacity-0 hover:before:opacity-100 before:transition-opacity
-                shadow-lg hover:shadow-xl
-              `}
-              title={task.completed ? "Mark as Incomplete" : "Mark as Complete"}
-            >
-              <div className="relative flex items-center gap-3 text-lg font-medium tracking-wide">
-                <svg 
-                  className={`w-6 h-6 transition-transform duration-300
-                    ${task.completed ? 'rotate-0' : 'rotate-[-90deg]'}
-                  `}
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    d={task.completed 
-                      ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      : "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    }
-                  />
-                </svg>
-                <span className={`
-                  relative font-semibold uppercase tracking-wider text-sm
-                  after:absolute after:bottom-0 after:left-0 after:h-[2px]
-                  after:bg-current after:transition-all after:duration-300
-                  ${task.completed
-                    ? 'after:w-full'
-                    : 'after:w-0 group-hover:after:w-full'
-                  }
-                `}>
-                  {task.completed ? (
-                    <span className="flex items-center gap-2">
-                      COMPLETED
-                      <span className="text-xs opacity-60">✨</span>
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      MARK DONE
-                      <span className="text-xs animate-pulse">→</span>
-                    </span>
-                  )}
-                </span>
-              </div>
-            </button>
-          )}
-        </div>
+  //         {/* Only render completion button in today's view */}
+  //         {showTomorrow && (
+  //           <button
+  //             onClick={(e) => {
+  //               e.stopPropagation()
+  //               handleTaskComplete(task)
+  //             }}
+  //             className={`
+  //               group relative px-6 py-4 rounded-2xl transition-all duration-300 
+  //               transform hover:scale-105 hover:-rotate-1
+  //               flex items-center gap-4 min-w-[180px]
+  //               ${task.completed
+  //                 ? theme === 'dark'
+  //                   ? 'bg-gradient-to-r from-green-500/30 to-emerald-500/30 text-green-400'
+  //                   : 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-600'
+  //                 : theme === 'dark'
+  //                   ? 'bg-gradient-to-r from-slate-700/80 to-slate-800/80 text-slate-300'
+  //                   : 'bg-gradient-to-r from-slate-100 to-white text-slate-700'
+  //               }
+  //               before:absolute before:inset-0 before:rounded-2xl
+  //               before:bg-gradient-to-r before:from-transparent before:via-white/5 before:to-transparent
+  //               before:opacity-0 hover:before:opacity-100 before:transition-opacity
+  //               shadow-lg hover:shadow-xl
+  //             `}
+  //             title={task.completed ? "Mark as Incomplete" : "Mark as Completee"}
+  //           >
+  //             <div className="relative flex items-center gap-3 text-lg font-medium tracking-wide">
+  //               <svg 
+  //                 className={`w-6 h-6 transition-transform duration-300
+  //                   ${task.completed ? 'rotate-0' : 'rotate-[-90deg]'}
+  //                 `}
+  //                 fill="none" 
+  //                 viewBox="0 0 24 24" 
+  //                 stroke="currentColor"
+  //                 strokeWidth={2}
+  //               >
+  //                 <path 
+  //                   strokeLinecap="round" 
+  //                   strokeLinejoin="round" 
+  //                   d={task.completed 
+  //                     ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+  //                     : "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+  //                   }
+  //                 />
+  //               </svg>
+  //               <span className={`
+  //                 relative font-semibold uppercase tracking-wider text-sm
+  //                 after:absolute after:bottom-0 after:left-0 after:h-[2px]
+  //                 after:bg-current after:transition-all after:duration-300
+  //                 ${task.completed
+  //                   ? 'after:w-full'
+  //                   : 'after:w-0 group-hover:after:w-full'
+  //                 }
+  //               `}>
+  //                 {task.completed ? (
+  //                   <span className="flex items-center gap-2">
+  //                     COMPLETED
+  //                     <span className="text-xs opacity-60">✨</span>
+  //                   </span>
+  //                 ) : (
+  //                   <span className="flex items-center gap-2">
+  //                     MARK DONE
+  //                     <span className="text-xs animate-pulse">→</span>
+  //                   </span>
+  //                 )}
+  //               </span>
+  //             </div>
+  //           </button>
+  //         )}
+  //       </div>
 
-        {/* Task content without any completion-related styles for tomorrow's view */}
-        <div className="flex-1 flex flex-col min-h-0 mb-8">
-          <h3 className={`
-            text-base sm:text-lg font-medium
-            ${!showTomorrow && task.completed ? 'line-through opacity-50' : ''}
-            ${theme === 'dark' 
-              ? 'text-white' 
-              : 'text-zinc-900'
-            }
-          `}>
-            {task.activity || (
-              <span className={`italic ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
-                Click hour to add task
-              </span>
-            )}
-          </h3>
-          {task.description && (
-            <p className={`
-              text-sm mt-1
-              ${!showTomorrow && task.completed ? 'line-through opacity-50' : ''}
-              ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
-            `}>
-              {task.description}
-            </p>
-          )}
-        </div>
+  //       {/* Task content without any completion-related styles for tomorrow's view */}
+  //       <div className="flex-1 flex flex-col min-h-0 mb-8">
+  //         <h3 className={`
+  //           text-base sm:text-lg font-medium
+  //           ${!showTomorrow && task.completed ? 'line-through opacity-50' : ''}
+  //           ${theme === 'dark' 
+  //             ? 'text-white' 
+  //             : 'text-zinc-900'
+  //           }
+  //         `}>
+  //           {task.activity || (
+  //             <span className={`italic ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
+  //               Click hour to add task
+  //             </span>
+  //           )}
+  //         </h3>
+  //         {task.description && (
+  //           <p className={`
+  //             text-sm mt-1
+  //             ${!showTomorrow && task.completed ? 'line-through opacity-50' : ''}
+  //             ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
+  //           `}>
+  //             {task.description}
+  //           </p>
+  //         )}
+  //       </div>
 
-        {/* Action buttons - Updated to be always visible */}
-        {(showTomorrow || showFullSchedule) && (
-          <div className="absolute bottom-2 right-2 flex gap-2 
-            transition-all duration-300 bg-inherit"
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                handlePriorityToggle(task)
-              }}
-              className={`
-                p-1.5 rounded-lg transition-colors
-                ${task.isPriority
-                  ? theme === 'dark'
-                    ? 'bg-blue-500/30 text-blue-400'
-                    : 'bg-blue-100 text-blue-600'
-                  : theme === 'dark'
-                    ? 'bg-slate-700 text-slate-400'
-                    : 'bg-slate-100 text-slate-600'
-                }
-              `}
-              title="Toggle Priority"
-            >
-              <svg className="w-4 h-4" fill={task.isPriority ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-                />
-              </svg>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                handleTaskDelete(task)
-              }}
-              className={`
-                p-1.5 rounded-lg transition-colors
-                ${theme === 'dark'
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                  : 'bg-red-50 text-red-600 hover:bg-red-100'
-                }
-              `}
-              title="Delete Task"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
-                />
-              </svg>
-            </button>
-          </div>
-        )}
-      </motion.div>
-    )
-  }
+  //       {/* Action buttons - Updated to be always visible */}
+  //       {(showTomorrow || showFullSchedule) && (
+  //         <div className="absolute bottom-2 right-2 flex gap-2 
+  //           transition-all duration-300 bg-inherit"
+  //         >
+  //           <button
+  //             onClick={(e) => {
+  //               e.stopPropagation()
+  //               handlePriorityToggle(task)
+  //             }}
+  //             className={`
+  //               p-1.5 rounded-lg transition-colors
+  //               ${task.isPriority
+  //                 ? theme === 'dark'
+  //                   ? 'bg-blue-500/30 text-blue-400'
+  //                   : 'bg-blue-100 text-blue-600'
+  //                 : theme === 'dark'
+  //                   ? 'bg-slate-700 text-slate-400'
+  //                   : 'bg-slate-100 text-slate-600'
+  //               }
+  //             `}
+  //             title="Toggle Priority"
+  //           >
+  //             <svg className="w-4 h-4" fill={task.isPriority ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+  //               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+  //                 d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+  //               />
+  //             </svg>
+  //           </button>
+  //           <button
+  //             onClick={(e) => {
+  //               e.stopPropagation()
+  //               handleTaskDelete(task)
+  //             }}
+  //             className={`
+  //               p-1.5 rounded-lg transition-colors
+  //               ${theme === 'dark'
+  //                 ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+  //                 : 'bg-red-50 text-red-600 hover:bg-red-100'
+  //               }
+  //             `}
+  //             title="Delete Task"
+  //           >
+  //             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  //               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+  //                 d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
+  //               />
+  //             </svg>
+  //           </button>
+  //         </div>
+  //       )}
+  //     </motion.div>
+  //   )
+  // }
 
   // Filter hours to show only those with tasks for Today view
   const getVisibleHours = () => {
@@ -2029,7 +2031,7 @@ Your Task Manager`,
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
                     <p className={`font-medium ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
-                      Want to modify today's schedule?
+                      Want to modify today&apos;s schedule?
                     </p>
                     <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
                       Click here to view and edit all available time slots

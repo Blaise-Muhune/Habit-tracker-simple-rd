@@ -23,5 +23,5 @@ export const googleProvider = new GoogleAuthProvider()
 
 // Only initialize analytics on the client side
 if (typeof window !== 'undefined') {
-  const analytics = getAnalytics(app)
+  getAnalytics(app)
 } 

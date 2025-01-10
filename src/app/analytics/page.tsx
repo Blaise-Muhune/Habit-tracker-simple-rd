@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useRouter } from 'next/navigation'
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import { Task, HistoricalTask } from '@/types'
+import { HistoricalTask } from '@/types'
 import { Line, Bar, Doughnut } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -20,7 +20,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js'
-import { format, subDays, startOfWeek, endOfWeek } from 'date-fns'
+import { format, subDays  } from 'date-fns'
 import { motion } from 'framer-motion'
 
 // Register ChartJS components
@@ -68,6 +68,17 @@ const calculateFocusScore = (focusBlocks: Record<string, number>): number => {
   return numberOfBlocks > 0 ? totalMinutes / numberOfBlocks : 0
 }
 
+interface WeeklyData {
+  date: string
+  total: number
+  completed: number
+}
+
+interface TaskTrend {
+  date: string
+  trend: number
+}
+
 export default function AnalyticsPage() {
   const { theme } = useTheme()
   const { user } = useAuth()
@@ -80,11 +91,11 @@ export default function AnalyticsPage() {
     priorityCompletion: 0,
     averageTasksPerDay: 0,
     mostProductiveHour: 0,
-    weeklyData: [] as any[],
+    weeklyData: [] as WeeklyData[],
     categoryDistribution: {} as Record<string, number>,
     timeDistribution: {} as Record<string, number>,
     averageCompletionTime: 0,
-    taskTrends: [] as any[],
+    taskTrends: [] as TaskTrend[],
     overdueTasks: 0,
     recurringTaskSuccess: 0,
     taskComplexityScore: 0,
@@ -121,7 +132,7 @@ export default function AnalyticsPage() {
     }
 
     checkPremiumStatus()
-  }, [user])
+  }, [user, router])
 
   const loadAnalyticsData = async () => {
     if (!user) return

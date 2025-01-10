@@ -18,7 +18,7 @@ export interface Task {
 export interface HistoricalTask extends Task {
   originalDate: string
   actualDate: string
-  archivedAt: any
+  archivedAt: number
   completionTime?: number
   dueDate?: string
   completedDate?: string

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 
 // Check if API key exists
 
-let key = "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"
+let key = process.env.OPENAI_API_KEY
 if (!key) {
   console.error('OPENAI_API_KEY is not set in environment variables')
 }
