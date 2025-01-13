@@ -298,7 +298,7 @@ const UserPreferences = () => {
                     : 'bg-white border-gray-200 text-gray-900 focus:border-violet-500'
                   } focus:ring-1 focus:ring-violet-500 focus:outline-none`}
               >
-                <option value="today">Today's Tasks</option>
+                <option value="today">Today&apos;s Tasks</option>
                 <option value="schedule">Full Schedule</option>
               </select>
             </div>
@@ -321,9 +321,6 @@ const UserPreferences = () => {
                 <option value="10">10 minutes before</option>
                 <option value="15">15 minutes before</option>
                 <option value="30">30 minutes before</option>
-                <option value="45">45 minutes before</option>
-                <option value="34">34 minutes before</option>
-                <option value="60">1 hour before</option>
               </select>
             </div>
           </div>

@@ -6,7 +6,7 @@ import { motion } from 'framer-motion'
 import Link from 'next/link'
 
 export default function PreferencesPage() {
-  const { theme, setTheme } = useTheme()
+  const { theme } = useTheme()
 
   return (
     <div className="min-h-screen w-full">
