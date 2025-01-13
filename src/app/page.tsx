@@ -22,7 +22,6 @@ import {
 } from 'firebase/firestore'
 import { useAuth } from '@/context/AuthContext'
 import { User } from 'firebase/auth'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Task, HistoricalTask, UserPreferences, SuggestedTask, //TaskDetailPopupProps, SuggestedTaskCardProps 
   } from '@/types'
@@ -244,72 +243,8 @@ const TaskDetailPopup = ({
   )
 }
 
-// Add these helper functions
-const hasTimeConflict = (task1: Task, task2: Task) => {
-  const task1End = task1.startTime + task1.duration;
-  const task2End = task2.startTime + task2.duration;
-  return (
-    (task1.startTime >= task2.startTime && task1.startTime < task2End) ||
-    (task2.startTime >= task1.startTime && task2.startTime < task1End)
-  );
-};
 
-const findTimeConflicts = (newTask: Task, existingTasks: Task[]) => {
-  return existingTasks.filter(task => hasTimeConflict(newTask, task));
-};
 
-// Update the type where setTomorrowTasks is passed as a prop
-type SetTomorrowTasksFunction = (tasks: Task[] | ((prevTasks: Task[]) => Task[])) => void
-
-const handleTaskReplacement = async (
-  newTask: Task, 
-  conflictingTasks: Task[], 
-  user: User,
-  setTomorrowTasks: SetTomorrowTasksFunction,
-  // setPlannedHours: (hours: number) => void
-) => {
-  if (!user) return;
-
-  try {
-    const batch = writeBatch(db);
-
-    // Delete conflicting tasks
-    for (const task of conflictingTasks) {
-      if (task.id) {
-        const taskRef = doc(db, 'tasks', task.id);
-        batch.delete(taskRef);
-      }
-    }
-
-    // Add new task
-    const newTaskRef = doc(collection(db, 'tasks'));
-    const taskWithId = {
-      ...newTask,
-      id: newTaskRef.id,
-      userId: user.uid
-    };
-    batch.set(newTaskRef, taskWithId);
-
-    // Commit the batch
-    await batch.commit();
-
-    // Update local state
-    setTomorrowTasks((prevTasks: Task[]) => 
-      [...prevTasks, taskWithId].sort((a, b) => a.startTime - b.startTime)
-    );
-
-    // Update planned hours
-    // setPlannedHours(prevHours => {
-    //   const removedHours = conflictingTasks.reduce((total, task) => total + task.duration, 0);
-    //   return prevHours - removedHours + newTask.duration;
-    // });
-
-    return true;
-  } catch (error) {
-    console.error('Error replacing tasks:', error);
-    return false;
-  }
-};
 
 export default function DailyTaskManager() {
   const { theme, setTheme } = useTheme()

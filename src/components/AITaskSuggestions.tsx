@@ -28,10 +28,8 @@ export default function AITaskSuggestions({
     suggestions,
     isLoadingSuggestions,
     loadSuggestions,
-    getCurrentTasks,
     setEditingTask,
     setShowTaskModal,
-    setCurrentTasks,
     setSuggestions,
     user
   }: AITaskSuggestionsProps) {
