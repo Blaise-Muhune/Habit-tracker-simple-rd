@@ -18,7 +18,8 @@ import {
   doc,
   writeBatch,
   setDoc,
-  getDoc
+  getDoc,
+  limit
 } from 'firebase/firestore'
 import { useAuth } from '@/context/AuthContext'
 import { User } from 'firebase/auth'
@@ -147,7 +148,8 @@ const TaskDetailPopup = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  onPriorityToggle()
+                  onClose() // Close the modal first
+                  onPriorityToggle() // Then toggle priority
                 }}
                 className={`
                   p-2 rounded-lg transition-colors flex items-center gap-2
@@ -171,7 +173,8 @@ const TaskDetailPopup = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  onDelete()
+                  onClose() // Close the modal first
+                  onDelete() // Then delete the task
                 }}
                 className={`
                   p-2 rounded-lg transition-colors flex items-center gap-2
@@ -258,6 +261,7 @@ export default function DailyTaskManager() {
     message: string;
     type: 'success' | 'error' | 'info';
   } | null>(null)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
 
   const getCurrentTasks = useCallback(() => {
     return showTomorrow ? tomorrowTasks : todayTasks;
@@ -336,6 +340,23 @@ export default function DailyTaskManager() {
               userId: user.uid
             }),
           });
+        }
+
+        // Send push notification
+        try {
+          await fetch('/api/push/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              title: `Reminder: ${task.activity} starts in ${userPrefs.reminderTime} minutes`,
+              userId: user.uid,
+              message: `Reminder: ${task.activity} starts in ${userPrefs.reminderTime} minutes`
+            }),
+          });
+        } catch (error) {
+          console.error('Error sending push notification:', error);
         }
 
         await updateDoc(doc(db, 'tasks', task.id), {
@@ -503,7 +524,9 @@ export default function DailyTaskManager() {
           phoneNumber: '',
           reminderTime: 10,
           email: user.email || '',
-          defaultView: 'today'
+          defaultView: 'today',
+          pushReminders: false,
+          pushSubscription: null
         };
         
         await setDoc(doc(db, 'userPreferences', user.uid), defaultPrefs);
@@ -674,17 +697,21 @@ export default function DailyTaskManager() {
       const last7Days = Array.from({ length: 7 }, (_, i) => 
         formatDate(addDays(new Date(), -(i + 1)))
       )
-      
+
+      console.log('Last 7 days:', last7Days)
       const historicalTasksQuery = query(
-        collection(db, 'taskHistory'),
+        collection(db, 'tasks'),
         where('userId', '==', user.uid),
-        where('actualDate', 'in', last7Days)
+        where('date', 'in', last7Days),
+        limit(30)
       )
-      
+
       const snapshot = await getDocs(historicalTasksQuery)
       const historicalTasks = snapshot.docs.map(doc => ({
         ...doc.data()
       })) as Task[]
+
+      console.log('Historical tasks:', historicalTasks)
       
       const newSuggestions = await generateSuggestions(historicalTasks)
       setSuggestions(newSuggestions)
@@ -819,12 +846,11 @@ export default function DailyTaskManager() {
       }
     } else {
       const newTask: Task = {
-        title: '',
         startTime: hour,
         duration: 1,
         activity: '',
-        isPriority: false,
         description: '',
+        isPriority: false,
         createdAt: Date.now(),
         date: showTomorrow ? tomorrow : today,
         userId: user.uid,
@@ -861,19 +887,19 @@ export default function DailyTaskManager() {
     }
 
     const taskDate = showTomorrow ? tomorrow : today
-    const newTask: Partial<Task> = {
+    const newTask: Task = {
       startTime: start,
       duration: duration,
       activity: '',
-      isPriority: false,
       description: '',
+      isPriority: false,
       createdAt: Date.now(),
       date: taskDate,
       userId: user.uid,
       completed: false
     }
 
-    setEditingTask(newTask as Task)
+    setEditingTask(newTask)
     setShowTaskModal(true)
     setIsCombineMode(false)
     setSelectionStart(null)
@@ -896,6 +922,9 @@ export default function DailyTaskManager() {
   // ])
 
   const handleTaskComplete = async (task: Task) => {
+    if (task.completed) {
+      await archiveTask(task)
+    }
     handleTaskUpdate(task, { completed: !task.completed })
   }
 
@@ -904,192 +933,6 @@ export default function DailyTaskManager() {
     console.log('Tasks:', getCurrentTasks())
   }, [showTomorrow, todayTasks, tomorrowTasks, getCurrentTasks])
 
-  // const renderTask = (task: Task, hour: number) => {
-  //   const isEditable = canModifyTasks()
-    
-  //   return (
-  //     <motion.div
-  //       className={`
-  //         relative rounded-xl p-4 h-full cursor-pointer
-  //         ${theme === 'dark' 
-  //           ? 'bg-slate-800/50 hover:bg-slate-800/70' 
-  //           : 'bg-white hover:bg-slate-50'
-  //         }
-  //       `}
-  //       onClick={(e) => {
-  //         if (!(e.target as HTMLElement).closest('button')) {
-  //           if (showFullSchedule) {
-  //             // If in edit mode, go straight to edit
-  //             setEditingTask(task)
-  //             setShowTaskModal(true)
-  //           } else {
-  //             // If not in edit mode, show detail popup
-  //             setEditingTask(task)
-  //             setShowDetailPopup(true)
-  //           }
-  //         }
-  //       }}
-  //     >
-  //       {/* Task content */}
-  //       <div className="flex items-center justify-between gap-2">
-  //         <div className={`text-xs sm:text-sm font-medium whitespace-nowrap
-  //           ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}
-  //         >
-  //           {`${formatTime(task.startTime)} - ${formatTime(task.startTime + task.duration)}`}
-  //         </div>
-          
-  //         {/* Only render completion button in today's view */}
-  //         {showTomorrow && (
-  //           <button
-  //             onClick={(e) => {
-  //               e.stopPropagation()
-  //               handleTaskComplete(task)
-  //             }}
-  //             className={`
-  //               group relative px-6 py-4 rounded-2xl transition-all duration-300 
-  //               transform hover:scale-105 hover:-rotate-1
-  //               flex items-center gap-4 min-w-[180px]
-  //               ${task.completed
-  //                 ? theme === 'dark'
-  //                   ? 'bg-gradient-to-r from-green-500/30 to-emerald-500/30 text-green-400'
-  //                   : 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-600'
-  //                 : theme === 'dark'
-  //                   ? 'bg-gradient-to-r from-slate-700/80 to-slate-800/80 text-slate-300'
-  //                   : 'bg-gradient-to-r from-slate-100 to-white text-slate-700'
-  //               }
-  //               before:absolute before:inset-0 before:rounded-2xl
-  //               before:bg-gradient-to-r before:from-transparent before:via-white/5 before:to-transparent
-  //               before:opacity-0 hover:before:opacity-100 before:transition-opacity
-  //               shadow-lg hover:shadow-xl
-  //             `}
-  //             title={task.completed ? "Mark as Incomplete" : "Mark as Completee"}
-  //           >
-  //             <div className="relative flex items-center gap-3 text-lg font-medium tracking-wide">
-  //               <svg 
-  //                 className={`w-6 h-6 transition-transform duration-300
-  //                   ${task.completed ? 'rotate-0' : 'rotate-[-90deg]'}
-  //                 `}
-  //                 fill="none" 
-  //                 viewBox="0 0 24 24" 
-  //                 stroke="currentColor"
-  //                 strokeWidth={2}
-  //               >
-  //                 <path 
-  //                   strokeLinecap="round" 
-  //                   strokeLinejoin="round" 
-  //                   d={task.completed 
-  //                     ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-  //                     : "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-  //                   }
-  //                 />
-  //               </svg>
-  //               <span className={`
-  //                 relative font-semibold uppercase tracking-wider text-sm
-  //                 after:absolute after:bottom-0 after:left-0 after:h-[2px]
-  //                 after:bg-current after:transition-all after:duration-300
-  //                 ${task.completed
-  //                   ? 'after:w-full'
-  //                   : 'after:w-0 group-hover:after:w-full'
-  //                 }
-  //               `}>
-  //                 {task.completed ? (
-  //                   <span className="flex items-center gap-2">
-  //                     COMPLETED
-  //                     <span className="text-xs opacity-60">✨</span>
-  //                   </span>
-  //                 ) : (
-  //                   <span className="flex items-center gap-2">
-  //                     MARK DONE
-  //                     <span className="text-xs animate-pulse">→</span>
-  //                   </span>
-  //                 )}
-  //               </span>
-  //             </div>
-  //           </button>
-  //         )}
-  //       </div>
-
-  //       {/* Task content without any completion-related styles for tomorrow's view */}
-  //       <div className="flex-1 flex flex-col min-h-0 mb-8">
-  //         <h3 className={`
-  //           text-base sm:text-lg font-medium
-  //           ${!showTomorrow && task.completed ? 'line-through opacity-50' : ''}
-  //           ${theme === 'dark' 
-  //             ? 'text-white' 
-  //             : 'text-zinc-900'
-  //           }
-  //         `}>
-  //           {task.activity || (
-  //             <span className={`italic ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
-  //               Click hour to add task
-  //             </span>
-  //           )}
-  //         </h3>
-  //         {task.description && (
-  //           <p className={`
-  //             text-sm mt-1
-  //             ${!showTomorrow && task.completed ? 'line-through opacity-50' : ''}
-  //             ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
-  //           `}>
-  //             {task.description}
-  //           </p>
-  //         )}
-  //       </div>
-
-  //       {/* Action buttons - Updated to be always visible */}
-  //       {(showTomorrow || showFullSchedule) && (
-  //         <div className="absolute bottom-2 right-2 flex gap-2 
-  //           transition-all duration-300 bg-inherit"
-  //         >
-  //           <button
-  //             onClick={(e) => {
-  //               e.stopPropagation()
-  //               handlePriorityToggle(task)
-  //             }}
-  //             className={`
-  //               p-1.5 rounded-lg transition-colors
-  //               ${task.isPriority
-  //                 ? theme === 'dark'
-  //                   ? 'bg-blue-500/30 text-blue-400'
-  //                   : 'bg-blue-100 text-blue-600'
-  //                 : theme === 'dark'
-  //                   ? 'bg-slate-700 text-slate-400'
-  //                   : 'bg-slate-100 text-slate-600'
-  //               }
-  //             `}
-  //             title="Toggle Priority"
-  //           >
-  //             <svg className="w-4 h-4" fill={task.isPriority ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-  //               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-  //                 d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-  //               />
-  //             </svg>
-  //           </button>
-  //           <button
-  //             onClick={(e) => {
-  //               e.stopPropagation()
-  //               handleTaskDelete(task)
-  //             }}
-  //             className={`
-  //               p-1.5 rounded-lg transition-colors
-  //               ${theme === 'dark'
-  //                 ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-  //                 : 'bg-red-50 text-red-600 hover:bg-red-100'
-  //               }
-  //             `}
-  //             title="Delete Task"
-  //           >
-  //             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-  //               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-  //                 d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
-  //               />
-  //             </svg>
-  //           </button>
-  //         </div>
-  //       )}
-  //     </motion.div>
-  //   )
-  // }
 
   // Filter hours to show only those with tasks for Today view
   const getVisibleHours = () => {
@@ -1135,17 +978,29 @@ export default function DailyTaskManager() {
   }
 
   const handleTaskClick = (task: Task) => {
-    setEditingTask(task);
+    setSelectedTask(task)
     if (showFullSchedule) {
-      // In edit mode - show edit modal
-      setShowTaskModal(true);
-      setShowDetailPopup(false);
+      setShowTaskModal(true)
+      setShowDetailPopup(false)
+      setEditingTask(task)
     } else {
-      // In view mode - show detail popup
-      setShowTaskModal(false);
-      setShowDetailPopup(true);
+      setShowTaskModal(false)
+      setShowDetailPopup(true)
     }
-  };
+  }
+
+  // When a task is completed, it should be archived to taskHistory
+  const archiveTask = async (task: Task) => {
+    const historicalTask: HistoricalTask = {
+      ...task,
+      originalDate: task.date,
+      actualDate: new Date().toISOString().split('T')[0],
+      archivedAt: Date.now(),
+      completedDate: new Date().toISOString(),
+    }
+
+    await addDoc(collection(db, 'taskHistory'), historicalTask)
+  }
 
   return (
     <div className={`h-screen overflow-auto ${theme === 'dark' 
@@ -1299,6 +1154,28 @@ export default function DailyTaskManager() {
                     </Link>
 
                     {/* Sign out button */}
+                    <Link
+                      href="/feedback"
+                      className={`block px-4 py-2 text-sm
+                        ${theme === 'dark'
+                          ? 'text-slate-300 hover:bg-slate-700'
+                          : 'text-slate-700 hover:bg-slate-50'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            strokeWidth={2} 
+                            d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
+                          />
+                        </svg>
+                        Send Feedback
+                      </div>
+                    </Link>
+
                     <button
                       onClick={logout}
                       className={`block w-full text-left px-4 py-2 text-sm
@@ -1683,26 +1560,6 @@ export default function DailyTaskManager() {
                 />
           ): (<PremiumUpgradePrompt />))}
 
-          {/* Edit mode indicator - Simplified and more compact */}
-          {!showTomorrow && showFullSchedule && (
-            <div className={`
-              inline-flex items-center gap-2 px-4 py-2 rounded-lg
-              ${theme === 'dark'
-                ? 'bg-violet-500/20 border border-violet-500/10'
-                : 'bg-violet-50 border border-violet-100'
-              }
-            `}>
-              <span className={`
-                text-sm font-medium
-                ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}
-              `}>
-                Edit Mode Active
-              </span>
-              <div className={`w-2 h-2 rounded-full animate-pulse
-                ${theme === 'dark' ? 'bg-violet-400' : 'bg-violet-500'}
-              `} />
-            </div>
-          )}
           {/* Task list with gaming aesthetic */}
           <div className="relative">
             {/* Add visual distinction for tomorrow's view */}
@@ -1723,6 +1580,50 @@ export default function DailyTaskManager() {
                 `}>
                   Planning Ahead
                       </span>
+              </div>
+            )}
+
+            {/* Edit mode indicator - Now sticky */}
+            {!showTomorrow && showFullSchedule && (
+              <div className={`
+                sticky top-0 z-50 -mx-8 px-8 py-4
+                backdrop-blur-lg
+                ${theme === 'dark'
+                  ? 'bg-[#0B1120]/80'
+                  : 'bg-[#F0F4FF]/80'
+                }
+              `}>
+                <div className="flex justify-between items-center">
+                  <div 
+                    onClick={() => setShowFullSchedule(false)}
+                    className={`
+                      inline-flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer
+                      transition-colors duration-200
+                      ${theme === 'dark'
+                        ? 'bg-violet-500/20 border border-violet-500/10 hover:bg-violet-500/30'
+                        : 'bg-violet-50 border border-violet-100 hover:bg-violet-100'
+                      }
+                    `}
+                  >
+                    <span className={`
+                      text-sm font-medium
+                      ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}
+                    `}>
+                      Edit Mode Active
+                    </span>
+                    <div className={`w-2 h-2 rounded-full animate-pulse
+                      ${theme === 'dark' ? 'bg-violet-400' : 'bg-violet-500'}
+                    `} />
+                    <svg 
+                      className={`w-4 h-4 ml-2 ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`} 
+                      fill="none" 
+                      viewBox="0 0 24 24" 
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1896,7 +1797,7 @@ export default function DailyTaskManager() {
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                                 d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
-                              />
+                                />
                             </svg>
                           </button>
                         </div>
@@ -2076,7 +1977,7 @@ export default function DailyTaskManager() {
         </div>
       )}
 
-      {/* Combined Edit Mode Controls */}
+      {/* Combined Edit Mode Controls - Remove exit button */}
       {!showTomorrow && showFullSchedule && (
         <div className="fixed bottom-8 right-8 flex gap-4 z-50">
           {isCombineMode ? (
@@ -2116,38 +2017,21 @@ export default function DailyTaskManager() {
               </button>
             </>
           ) : (
-            <>
-              <button
-                onClick={() => setIsCombineMode(true)}
-                className={`
-                  p-4 rounded-full shadow-lg flex items-center gap-2
-                  ${theme === 'dark'
-                    ? 'bg-slate-800 hover:bg-slate-700 text-white'
-                    : 'bg-white hover:bg-slate-50 text-slate-900'
-                  }
-                `}
-              >
-                <span>Combine Hours</span>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-              </button>
-              <button
-                onClick={() => setShowFullSchedule(false)}
-                className={`
-                  p-4 rounded-full shadow-lg flex items-center gap-2
-                  ${theme === 'dark'
-                    ? 'bg-slate-800 hover:bg-slate-700 text-white'
-                    : 'bg-white hover:bg-slate-50 text-slate-900'
-                  }
-                `}
-              >
-                <span>Exit Edit Mode</span>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </>
+            <button
+              onClick={() => setIsCombineMode(true)}
+              className={`
+                p-4 rounded-full shadow-lg flex items-center gap-2
+                ${theme === 'dark'
+                  ? 'bg-slate-800 hover:bg-slate-700 text-white'
+                  : 'bg-white hover:bg-slate-50 text-slate-900'
+                }
+              `}
+            >
+              <span>Combine Hours</span>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </button>
           )}
         </div>
       )}
@@ -2216,18 +2100,21 @@ export default function DailyTaskManager() {
       )}
 
       {/* Detail Popup */}
-      {showDetailPopup && editingTask && (
+      {showDetailPopup && selectedTask && (
         <TaskDetailPopup
-          task={editingTask}
+          task={selectedTask}
           onClose={() => {
             setShowDetailPopup(false)
-            setEditingTask(null)
+            setSelectedTask(null)
           }}
           theme={theme || 'light'}
-          isEditMode={false}
-          onModify={() => {}}
-          onPriorityToggle={() => handlePriorityToggle(editingTask)}
-          onDelete={() => handleTaskDelete(editingTask)}
+          isEditMode={showTomorrow || showFullSchedule}
+          onModify={() => {
+            setEditingTask(selectedTask)
+            setShowTaskModal(true)
+          }}
+          onPriorityToggle={() => handlePriorityToggle(selectedTask)}
+          onDelete={() => handleTaskDelete(selectedTask)}
         />
       )}
 

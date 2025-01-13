@@ -1,5 +1,8 @@
 import { OpenAI } from 'openai'
 import { NextResponse } from 'next/server'
+import { Task, SuggestedTask } from '@/types'
+import { db } from '@/lib/firebase'
+import { addDoc, collection, query, where, getDocs } from 'firebase/firestore'
 
 // Check if API key exists
 
@@ -14,71 +17,114 @@ const openai = new OpenAI({
 
 export async function POST(request: Request) {
   try {
-    // 1. Log request data
     const body = await request.json()
-    console.log('Received historical tasks:', body.historicalTasks)
+    
+    // Debug logging
+    console.log('Request body:', {
+      userId: body.userId,
+      hasHistoricalTasks: !!body.historicalTasks,
+      historicalTasksLength: body.historicalTasks?.length,
+    })
 
-    if (!body.historicalTasks) {
+    // Validate required fields with better error messages
+    if (!body.userId) {
+      console.log('Missing userId in request')
       return NextResponse.json(
-        { error: 'No historical tasks provided' },
+        { error: 'userId is required' },
         { status: 400 }
       )
     }
 
-    if (!body.historicalTasks || body.historicalTasks.length === 0) {
-      // Return default suggestions if no history
-      return NextResponse.json([
+    if (!body.historicalTasks) {
+      console.log('Missing historicalTasks in request')
+      return NextResponse.json(
+        { error: 'historicalTasks is required' },
+        { status: 400 }
+      )
+    }
+
+    // If historicalTasks is empty, return default suggestions
+    if (body.historicalTasks.length === 0) {
+      console.log('Historical tasks array is empty, returning defaults')
+      const defaultSuggestions = [
         {
           activity: "Morning Planning Session",
           description: "Review and plan your day's priorities",
           startTime: 8,
           duration: 1,
           confidence: 90,
-          reasoning: "Starting the day with planning helps increase productivity"
+          category: "Planning",
+          completed: false,
+          isPriority: false,
+          date: new Date().toISOString().split('T')[0],
+          createdAt: Date.now(),
+          userId: body.userId
         },
-        {
-          activity: "Focus Work Block",
-          description: "Dedicated time for your most important task",
-          startTime: 9,
-          duration: 2,
-          confidence: 85,
-          reasoning: "Peak productivity hours for most people are in the morning"
-        },
-        {
-          activity: "Review & Wrap-up",
-          description: "Review day's progress and plan for tomorrow",
-          startTime: 16,
-          duration: 1,
-          confidence: 80,
-          reasoning: "End-of-day review helps maintain productivity momentum"
-        }
-      ])
+        // ... other default suggestions ...
+      ]
+
+      // Store default suggestions in Firebase
+      try {
+        const suggestionsRef = collection(db, 'suggestions')
+        await Promise.all(defaultSuggestions.map(suggestion => 
+          addDoc(suggestionsRef, suggestion)
+        ))
+        console.log('Default suggestions stored in Firebase')
+      } catch (fbError) {
+        console.error('Failed to store default suggestions:', fbError)
+      }
+
+      return NextResponse.json(defaultSuggestions)
     }
+
+    // Check Firebase for existing suggestions for today
+    const today = new Date().toISOString().split('T')[0]
+    try {
+      const suggestionsRef = collection(db, 'suggestions')
+      const q = query(
+        suggestionsRef,
+        where('date', '==', today),
+        where('userId', '==', body.userId)
+      )
+      const querySnapshot = await getDocs(q)
+      
+      if (!querySnapshot.empty) {
+        console.log('Found existing suggestions in Firebase')
+        const existingSuggestions = querySnapshot.docs.map(doc => doc.data() as SuggestedTask)
+        return NextResponse.json(existingSuggestions)
+      }
+    } catch (fbError) {
+      console.error('Failed to query Firebase:', fbError)
+      // Continue to OpenAI if Firebase query fails
+    }
+
+    // If no suggestions found in Firebase, continue with OpenAI request
+    console.log('No existing suggestions found, generating new ones...')
 
     // 2. Prepare the prompt
     const prompt = `
       You are a productivity AI assistant. Based on these historical tasks:
       ${JSON.stringify(body.historicalTasks, null, 2)}
 
-      Generate 3 suggested tasks for tomorrow. Format your response as a JSON object with this exact structure:
+      Generate 12 suggested tasks for tomorrow. Format your response as a JSON object with this exact structure:
       {
         "suggestions": [
           {
             "activity": "Task name",
             "description": "Brief description",
-            "startTime": 9,
-            "duration": 2,
-            "confidence": 85,
-            "reasoning": "Why this task is suggested"
+            "startTime": number between 0-23,
+            "duration": number between 1-4,
+            "category": "optional category name"
           }
         ]
       }
 
       Rules:
-      - startTime must be between 0 and 23
-      - duration must be between 1 and 4
-      - confidence must be between 0 and 100
-      - Keep descriptions concise
+      - activity should be clear and actionable
+      - startTime must be between 0 and 23 (24-hour format)
+      - duration must be between 1 and 4 hours
+      - descriptions should be under 100 characters
+      - base suggestions on patterns from historical tasks
     `
 
     // 3. Make OpenAI request with error handling
@@ -88,7 +134,7 @@ export async function POST(request: Request) {
         role: "user", 
         content: prompt 
       }],
-      model: "gpt-3.5-turbo", // Fallback to 3.5 if 4 isn't available
+      model: "gpt-4o", // Fallback to 3.5 if 4 isn't available
       response_format: { type: "json_object" },
       temperature: 0.7,
     })
@@ -108,8 +154,46 @@ export async function POST(request: Request) {
       throw new Error('Invalid response format from OpenAI')
     }
 
-    // 6. Return successful response
-    return NextResponse.json(parsedResponse.suggestions)
+    // Validate each suggestion matches our interface
+    const validatedSuggestions = parsedResponse.suggestions.map((suggestion: any): SuggestedTask => {
+      if (
+        typeof suggestion.activity !== 'string' ||
+        typeof suggestion.startTime !== 'number' ||
+        typeof suggestion.duration !== 'number' ||
+        suggestion.startTime < 0 || 
+        suggestion.startTime > 23
+      ) {
+        throw new Error('Invalid suggestion format')
+      }
+
+      return {
+        activity: suggestion.activity,
+        description: suggestion.description || '',
+        startTime: suggestion.startTime,
+        duration: suggestion.duration,
+        completed: false,
+        isPriority: false,
+        date: new Date().toISOString().split('T')[0],
+        createdAt: Date.now(),
+        userId: body.userId,
+        confidence: suggestion.confidence || 85,
+        category: suggestion.category || 'General'
+      }
+    })
+
+    // Store suggestions in Firebase
+    try {
+      const suggestionsRef = collection(db, 'suggestions')
+      await Promise.all(validatedSuggestions.map(suggestion => 
+        addDoc(suggestionsRef, suggestion)
+      ))
+      console.log('Suggestions stored in Firebase')
+    } catch (fbError) {
+      console.error('Failed to store suggestions in Firebase:', fbError)
+      // Continue execution even if Firebase storage fails
+    }
+
+    return NextResponse.json(validatedSuggestions)
 
   } catch (error: unknown) {
     // 7. Detailed error logging

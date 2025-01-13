@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { formatDistanceToNow } from 'date-fns';
 import { User } from 'firebase/auth';
 import SuggestedTaskCard from './SuggestedTaskCard';
+import { useState } from 'react';
 
 interface AITaskSuggestionsProps {
   theme: string;
@@ -28,11 +29,53 @@ export default function AITaskSuggestions({
     suggestions,
     isLoadingSuggestions,
     loadSuggestions,
+    getCurrentTasks,
     setEditingTask,
     setShowTaskModal,
     setSuggestions,
     user
   }: AITaskSuggestionsProps) {
+    const [showAllSuggestions, setShowAllSuggestions] = useState(false);
+    const INITIAL_SUGGESTIONS_COUNT = 4;
+
+    const visibleSuggestions = showAllSuggestions 
+      ? suggestions 
+      : suggestions.slice(0, INITIAL_SUGGESTIONS_COUNT);
+
+    const handleLoadSuggestions = async () => {
+      if (!user?.uid) {
+        console.error('No user ID available');
+        return;
+      }
+
+      try {
+        // Debug log to verify data
+        console.log('Sending request with user:', user.uid);
+
+        const response = await fetch('/api/generate-suggestions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            historicalTasks: getCurrentTasks() || [],
+            userId: user.uid
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('API Error:', errorData);
+          return;
+        }
+
+        const data = await response.json();
+        setSuggestions(data);
+      } catch (error) {
+        console.error('Failed to load suggestions:', error);
+      }
+    };
+
     return (
       <div className="w-full mb-4">
         <motion.div
@@ -103,11 +146,11 @@ export default function AITaskSuggestions({
                   ${theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-50/50'}
                 `}>
                   <span className={`text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                    Last updated {formatDistanceToNow(new Date(), { addSuffix: true })}
+                  Reload suggestions after ok/x all tasks.
                   </span>
                   <button
-                    onClick={loadSuggestions}
-                    disabled={isLoadingSuggestions}
+                    onClick={handleLoadSuggestions}
+                    disabled={isLoadingSuggestions || !user}
                     className={`
                       px-2 py-1 rounded-lg transition-colors flex items-center gap-2 text-xs
                       ${theme === 'dark'
@@ -130,21 +173,52 @@ export default function AITaskSuggestions({
                 {/* Suggestions List */}
                 <div className="p-3 space-y-2">
                   {suggestions.length > 0 ? (
-                    suggestions.map((suggestion, index) => (
-                      <SuggestedTaskCard
-                        key={index}
-                        suggestion={suggestion}
-                        theme={theme}
-                        onAccept={(task: Partial<Task>) => {
-                          setEditingTask(task as Task);
-                          setShowTaskModal(true);
-                        }}
-                        onRemove={() => {
-                          setSuggestions(prev => prev.filter((_, i) => i !== index));
-                        }}
-                        user={user}
-                      />
-                    ))
+                    <>
+                      {visibleSuggestions.map((suggestion, index) => (
+                        <SuggestedTaskCard
+                          key={index}
+                          suggestion={suggestion}
+                          theme={theme}
+                          onAccept={(task: Partial<Task>) => {
+                            setEditingTask(task as Task);
+                            setShowTaskModal(true);
+                          }}
+                          onRemove={() => {
+                            setSuggestions(prev => prev.filter((_, i) => i !== index));
+                          }}
+                          user={user}
+                        />
+                      ))}
+                      
+                      {/* View All Button */}
+                      {suggestions.length > INITIAL_SUGGESTIONS_COUNT && (
+                        <button
+                          onClick={() => setShowAllSuggestions(!showAllSuggestions)}
+                          className={`
+                            w-full py-2 px-3 mt-2 rounded-lg text-sm transition-colors
+                            ${theme === 'dark'
+                              ? 'bg-slate-700/50 hover:bg-slate-700 text-slate-300'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}
+                          `}
+                        >
+                          {showAllSuggestions ? (
+                            <span className="flex items-center justify-center gap-1">
+                              Show Less
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              </svg>
+                            </span>
+                          ) : (
+                            <span className="flex items-center justify-center gap-1">
+                              View All ({suggestions.length - INITIAL_SUGGESTIONS_COUNT} more)
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </span>
+                          )}
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <div className="text-center py-4">
                       <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>

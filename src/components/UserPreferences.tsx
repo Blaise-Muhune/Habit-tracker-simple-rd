@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { UserPreferences as UserPreferencesType } from '@/types';
+import { UserPreferences as UserPreferencesType, PushSubscriptionJSON } from '@/types';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 
@@ -70,6 +70,8 @@ const UserPreferences = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [subscription, setSubscription] = useState<PushSubscription | null>(null);
 
   useEffect(() => {
     const loadPreferences = async () => {
@@ -90,6 +92,15 @@ const UserPreferences = () => {
           setEmailEnabled(prefs.emailReminders ?? true);
           setDefaultView(prefs.defaultView || 'today');
           setReminderTime(prefs.reminderTime || 10);
+          setPushEnabled(prefs.pushReminders || false);
+          // Convert serialized subscription back to PushSubscription if it exists
+          if (prefs.pushSubscription) {
+            const registration = await navigator.serviceWorker.ready;
+            const existingSub = await registration.pushManager.getSubscription();
+            setSubscription(existingSub);
+          } else {
+            setSubscription(null);
+          }
         }
       } catch (err) {
         console.error('Error loading preferences:', err);
@@ -137,11 +148,31 @@ const UserPreferences = () => {
         throw new Error('Invalid phone number format. Please use +1XXXXXXXXXX format');
       }
 
+      // If push is enabled but no subscription exists, try to set it up
+      let currentSubscription = subscription;
+      if (pushEnabled && !currentSubscription) {
+        currentSubscription = await setupPushNotifications();
+        if (!currentSubscription) {
+          setPushEnabled(false);
+        }
+      }
+
+      // Serialize the push subscription
+      const serializedSubscription = currentSubscription ? {
+        endpoint: currentSubscription.endpoint,
+        keys: {
+          p256dh: currentSubscription.toJSON().keys?.p256dh || '',
+          auth: currentSubscription.toJSON().keys?.auth || ''
+        }
+      } : null;
+
       const preferences: UserPreferencesType = {
         userId: user.uid,
         phoneNumber: smsEnabled ? phoneNumber : null,
         smsReminders: smsEnabled,
         emailReminders: emailEnabled,
+        pushReminders: pushEnabled,
+        pushSubscription: serializedSubscription, // Store serialized version
         reminderTime: reminderTime,
         email: user.email || '',
         defaultView: defaultView
@@ -156,6 +187,43 @@ const UserPreferences = () => {
       setSaving(false);
     }
   };
+
+  const setupPushNotifications = useCallback(async () => {
+    try {
+      // Request notification permission
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        throw new Error('Notification permission denied');
+      }
+
+      // Register service worker
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      
+      // Get push subscription
+      const existingSubscription = await registration.pushManager.getSubscription();
+      
+      if (existingSubscription) {
+        setSubscription(existingSubscription);
+        setPushEnabled(true);
+        return existingSubscription;
+      }
+
+      // Create new subscription
+      const publicVapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      const newSubscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: publicVapidKey
+      });
+
+      setSubscription(newSubscription);
+      setPushEnabled(true);
+      return newSubscription;
+    } catch (error) {
+      console.error('Error setting up push notifications:', error);
+      setError('Failed to enable push notifications');
+      return null;
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -206,6 +274,59 @@ const UserPreferences = () => {
             />
           </div>
 
+          
+
+          {/* Push Notifications - Moved here */}
+          <div className="flex items-start sm:items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className={`text-sm sm:text-base font-medium ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Push Notifications
+                </label>
+                <span className={`px-1.5 sm:px-2 py-0.5 text-xs font-medium rounded-full
+                  ${theme === 'dark' 
+                    ? 'bg-violet-500/20 text-violet-400' 
+                    : 'bg-violet-100 text-violet-600'
+                  }`}
+                >
+                  PRO
+                </span>
+              </div>
+              <p className={`mt-0.5 text-xs sm:text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                Receive browser notifications for tasks
+              </p>
+            </div>
+            <ToggleSwitch
+              enabled={pushEnabled}
+              onChange={async (checked) => {
+                if (!isPremiumUser) {
+                  router.push('/premium');
+                  return;
+                }
+                if (checked) {
+                  await setupPushNotifications();
+                } else {
+                  // Unsubscribe from push notifications
+                  if (subscription) {
+                    await subscription.unsubscribe();
+                    await fetch('/api/push/unsubscribe', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        subscription,
+                        userId: user?.uid
+                      }),
+                    });
+                  }
+                  setPushEnabled(false);
+                  setSubscription(null);
+                }
+              }}
+              disabled={!isPremiumUser}
+            />
+          </div>
           {/* SMS Notifications */}
           <div className="flex items-start sm:items-center justify-between gap-4">
             <div className="flex-1 min-w-0">
@@ -316,11 +437,13 @@ const UserPreferences = () => {
                     ? 'bg-slate-800 border-slate-600 text-white focus:border-violet-500'
                     : 'bg-white border-gray-200 text-gray-900 focus:border-violet-500'
                   } focus:ring-1 focus:ring-violet-500 focus:outline-none`}
-              >
+              > 
+                <option disabled selected>Please select a time</option>
                 <option value="5">5 minutes before</option>
                 <option value="10">10 minutes before</option>
                 <option value="15">15 minutes before</option>
                 <option value="30">30 minutes before</option>
+                <option value="40">40 minutes before</option>
               </select>
             </div>
           </div>

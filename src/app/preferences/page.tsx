@@ -3,49 +3,63 @@
 import { useTheme } from 'next-themes'
 import UserPreferences from '@/components/UserPreferences'
 import { motion } from 'framer-motion'
+import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
 export default function PreferencesPage() {
   const { theme } = useTheme()
 
   return (
-    <div className="min-h-screen w-full">
-      {/* Header */}
-      <div className={`sticky top-0 z-10 px-4 py-3 border-b backdrop-blur-lg
-        ${theme === 'dark' ? 'bg-slate-900/90 border-slate-700' : 'bg-white/90 border-slate-200'}`}
-      >
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          <Link href="/" className={`p-2 rounded-lg transition-colors
-            ${theme === 'dark' ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}
+    <div className={`min-h-screen p-4 sm:p-8 ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'}`}>
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header - Updated to match main page style */}
+        <div className="flex items-center justify-between">
+          <h1 className={`text-3xl sm:text-4xl font-bold tracking-tight
+            ${theme === 'dark'
+              ? 'bg-gradient-to-r from-violet-400 via-blue-500 to-cyan-400 bg-clip-text text-transparent'
+              : 'bg-gradient-to-r from-violet-600 via-blue-600 to-cyan-600 bg-clip-text text-transparent'
+            }`}
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </Link>
-          <h1 className={`text-lg font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
             Preferences
           </h1>
+          <Link
+            href="/"
+            className={`p-2 sm:p-3 rounded-xl transition-all duration-300 border-2
+              ${theme === 'dark'
+                ? 'bg-slate-800 border-slate-700 hover:bg-slate-700'
+                : 'bg-white border-slate-200 hover:bg-slate-50'
+              }`}
+          >
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+          </Link>
         </div>
-      </div>
 
-      {/* Main content */}
-      <div className="max-w-4xl mx-auto p-4 sm:p-6">
+        {/* Main content - Updated card styles */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`rounded-xl sm:rounded-2xl border
-            ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
+          className={`p-6 rounded-2xl border-2 backdrop-blur-xl
+            ${theme === 'dark'
+              ? 'bg-slate-800/50 border-slate-700'
+              : 'bg-white/50 border-slate-200'
+            }`}
         >
-          <div className={`px-4 sm:px-6 py-4 border-b
+          <div className={`mb-6 pb-6 border-b
             ${theme === 'dark' ? 'border-slate-700' : 'border-slate-200'}`}
           >
-            <h2 className={`text-base sm:text-lg font-semibold
-              ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}
+            <h2 className={`text-xl font-bold
+              ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
             >
               User Preferences
             </h2>
+            <p className={`mt-1 text-sm
+              ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}
+            >
+              Customize your experience and notification settings
+            </p>
           </div>
-          <div className="p-4 sm:p-6">
+          
+          <div className="space-y-6">
             <UserPreferences />
           </div>
         </motion.div>

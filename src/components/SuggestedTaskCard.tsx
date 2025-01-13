@@ -1,5 +1,7 @@
 import { Task, SuggestedTask } from '../types'
 import { User } from 'firebase/auth'
+import { db } from '@/lib/firebase'
+import { query, collection, where, getDocs, deleteDoc } from 'firebase/firestore'
 
 interface SuggestedTaskCardProps {
   suggestion: SuggestedTask
@@ -22,12 +24,35 @@ export default function SuggestedTaskCard({
     return `${formattedHour}:00 ${ampm}`;
   };
 
-  const handleAccept = () => {
+  const deleteFromFirebase = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      const suggestionsRef = collection(db, 'suggestions')
+      const q = query(
+        suggestionsRef,
+        where('activity', '==', suggestion.activity),
+        where('startTime', '==', suggestion.startTime),
+        where('userId', '==', user.uid),
+        where('date', '==', new Date().toISOString().split('T')[0])
+      )
+      const querySnapshot = await getDocs(q)
+      
+      await Promise.all(
+        querySnapshot.docs.map(doc => deleteDoc(doc.ref))
+      )
+      
+      console.log('Suggestion removed from Firebase')
+    } catch (error) {
+      console.error('Error removing suggestion from Firebase:', error)
+    }
+  }
+
+  const handleAccept = async () => {
     const newTask: Partial<Task> = {
       activity: suggestion.activity,
       startTime: suggestion.startTime,
       duration: suggestion.duration,
-      title: suggestion.activity,
       completed: false,
       isPriority: false,
       date: new Date().toISOString().split('T')[0],
@@ -36,7 +61,14 @@ export default function SuggestedTaskCard({
       ...(suggestion.description && { description: suggestion.description }),
       ...(suggestion.category && { category: suggestion.category }),
     }
+
+    await deleteFromFirebase()
     onAccept(newTask)
+    onRemove()
+  }
+
+  const handleRemove = async () => {
+    await deleteFromFirebase()
     onRemove()
   }
 
@@ -75,7 +107,7 @@ export default function SuggestedTaskCard({
             </svg>
           </button>
           <button
-            onClick={onRemove}
+            onClick={handleRemove}
             className={`
               p-1.5 rounded-lg transition-colors
               ${theme === 'dark'

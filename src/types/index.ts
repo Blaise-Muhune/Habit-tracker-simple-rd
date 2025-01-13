@@ -9,15 +9,14 @@ export interface Task {
   startTime: number
   duration: number
   activity: string
-  title: string
-  description?: string
+  description: string
   isPriority: boolean
   completed: boolean
   date: string
-  userId?: string
-  category?: string
-  reminderSent?: boolean
+  userId: string
   createdAt: number
+  reminderSent?: boolean
+  category?: string
 }
 
 export interface HistoricalTask extends Task {
@@ -29,23 +28,29 @@ export interface HistoricalTask extends Task {
   completedDate?: string
 }
 
-export interface UserPreferences {
-  userId: string
-  emailReminders: boolean
-  smsReminders: boolean
-  phoneNumber: string | null
-  reminderTime: number
-  email: string
-  defaultView: 'today' | 'schedule'
+interface SerializedPushSubscription {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
 }
 
-export interface SuggestedTask {
-  activity: string
-  startTime: number
-  duration: number
-  description?: string
-  category?: string
-  confidence?: number
+export interface UserPreferences {
+  userId: string;
+  phoneNumber: string | null;
+  smsReminders: boolean;
+  emailReminders: boolean;
+  pushReminders: boolean;
+  pushSubscription: SerializedPushSubscription | null;
+  reminderTime: number;
+  email: string;
+  defaultView: 'today' | 'schedule';
+}
+
+export interface SuggestedTask extends Omit<Task, 'id'> {
+  confidence: number
+  category: string
 }
 
 export interface TaskDetailPopupProps {
@@ -68,4 +73,12 @@ export interface SuggestedTaskCardProps {
   user: User | null
   setTomorrowTasks: (tasks: Task[] | ((prevTasks: Task[]) => Task[])) => void
   setPlannedHours: (hours: number | ((prev: number) => number)) => void
+}
+
+export interface PushSubscriptionJSON {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
 } 
