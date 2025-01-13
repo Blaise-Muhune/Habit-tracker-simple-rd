@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { auth, googleProvider } from '@/lib/firebase'
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth'
 
-type AuthContextType = {
+export type AuthContextType = {
   user: User | null
   loading: boolean
   signInWithGoogle: () => Promise<void>
@@ -16,6 +16,7 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isPremiumUser, setIsPremiumUser] = useState(false)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {

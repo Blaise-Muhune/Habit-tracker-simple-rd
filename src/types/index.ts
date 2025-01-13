@@ -1,10 +1,15 @@
-import { User } from 'firebase/auth'
+import { User as FirebaseUser } from 'firebase/auth'
+
+export interface User {
+  User: FirebaseUser
+}
 
 export interface Task {
   id?: string
   startTime: number
   duration: number
   activity: string
+  title: string
   description?: string
   isPriority: boolean
   completed: boolean
@@ -27,8 +32,11 @@ export interface HistoricalTask extends Task {
 export interface UserPreferences {
   userId: string
   emailReminders: boolean
+  smsReminders: boolean
+  phoneNumber: string | null
   reminderTime: number
   email: string
+  defaultView: 'today' | 'schedule'
 }
 
 export interface SuggestedTask {

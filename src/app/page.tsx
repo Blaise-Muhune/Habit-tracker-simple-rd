@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { format, addDays } from 'date-fns'
+import { format, addDays, formatDistanceToNow } from 'date-fns'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { Sun, Moon } from 'lucide-react'
@@ -27,6 +27,7 @@ import Link from 'next/link'
 import { Task, HistoricalTask, UserPreferences, SuggestedTask, //TaskDetailPopupProps, SuggestedTaskCardProps 
   } from '@/types'
 import { Toast } from '@/components/Toast'
+import AITaskSuggestions from '../components/AITaskSuggestions'
 
 
 
@@ -335,6 +336,7 @@ const SuggestedTaskCard = ({
 
   const handleAccept = () => {
     const newTask: Task = {
+      title: suggestion.activity,
       startTime: suggestion.startTime,
       duration: suggestion.duration,
       activity: suggestion.activity,
@@ -391,6 +393,7 @@ const SuggestedTaskCard = ({
       if (!user) return; // Early return if no user
 
       const newTask: Task = {
+        title: suggestion.activity,
         startTime: suggestion.startTime,
         duration: suggestion.duration,
         activity: suggestion.activity,
@@ -598,65 +601,81 @@ export default function DailyTaskManager() {
 
   const checkAndSendReminder = async (task: Task) => {
     console.log('Checking reminder for task:', task.activity);
-    console.log('Task date string:', task.date);
     
-    if (!user?.email || task.reminderSent) {
-      console.log('Skipping reminder - no user email or reminder already sent');
-      return;
+    if (!user?.email || !task.id) {
+      console.log('Skipping reminder - no user email or task id');
+      return false;
     }
 
-    // Parse the date string correctly
-    const [year, month, day] = task.date.split('-').map(num => parseInt(num));
-    const taskDate = new Date(year, month - 1, day); // month is 0-based in JavaScript
-    taskDate.setHours(task.startTime);
-    taskDate.setMinutes(0);
-    taskDate.setSeconds(0);
-    
-    const reminderTime = new Date(taskDate.getTime() - /*userPreferences?.reminderTime*/ 10 * 60000);
-    const now = new Date();
+    try {
+      // Get user preferences
+      const prefsDoc = await getDoc(doc(db, 'userPreferences', user.uid));
+      const userPrefs = prefsDoc.data() as UserPreferences;
 
-    console.log('Task date:', taskDate.toLocaleString());
-    console.log('Reminder time:', reminderTime.toLocaleString());
-    console.log('Current time:', now.toLocaleString());
-
-    const isWithinTwoMinute = Math.abs(reminderTime.getTime() - now.getTime()) < 60000 *2;
-    const isSameDay = taskDate.toDateString() === now.toDateString();
-
-    console.log('Is within 2 minute:', isWithinTwoMinute);
-    console.log('Is same day:', isSameDay);
-
-    if (isWithinTwoMinute && isSameDay) {
-      console.log('Sending reminder for task:', task.activity);
-      try {
-        // Send email reminder
-        await fetch('/api/send-reminder', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            to: user.email,
-            subject: `Reminder: ${task.activity} in 10 minutes`,
-            text: `Hi ${user.displayName || 'there'},
-
-Your task "${task.activity}" starts in 10 minutes at ${formatTime(task.startTime)}.
-${task.description ? `\nDescription: ${task.description}` : ''}
-
-Best regards,
-Your Task Manager`,
-          }),
-        })
-
-        // Update task to mark reminder as sent
-        if (task.id) {
-          await updateDoc(doc(db, 'tasks', task.id), {
-            reminderSent: true,
-          })
-        }
-      } catch (error) {
-        console.error('Error sending reminder:', error)
+      // Check Firebase for current reminder status
+      const taskDoc = await getDoc(doc(db, 'tasks', task.id));
+      if (!taskDoc.exists()) {
+        console.log('Task no longer exists');
+        return false;
       }
+      
+      if (taskDoc.data().reminderSent) {
+        console.log('Reminder already sent according to Firebase');
+        return false;
+      }
+
+      const [year, month, day] = task.date.split('-').map(num => parseInt(num));
+      const taskDate = new Date(year, month - 1, day);
+      taskDate.setHours(task.startTime);
+      taskDate.setMinutes(0);
+      taskDate.setSeconds(0);
+      
+      // const reminderTime = new Date(taskDate.getTime() - userPrefs.reminderTime * 60000);
+      const reminderTime = new Date(taskDate.getTime() - 15 * 60000);
+      const now = new Date();
+
+      const isWithinOneMinute = Math.abs(reminderTime.getTime() - now.getTime()) <= 60000;
+      const isSameDay = taskDate.toDateString() === now.toDateString();
+
+      if (isWithinOneMinute && isSameDay) {
+        const reminderMessage = `Task Reminder: ${task.activity} starts in 10 minutes at ${formatTime(task.startTime)}. ${task.description ? `\nDetails: ${task.description}` : ''}\n\nView task: https://simple-r.vercel.app/`;
+
+        // Send email if enabled
+        if (userPrefs.emailReminders) {
+          await fetch('/api/send-reminder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: user.email,
+              subject: `Reminder: ${task.activity} in 10 minutes`,
+              text: `Hi ${user.displayName || 'there'},\n\n${reminderMessage}`
+            }),
+          });
+        }
+
+        // Send SMS if enabled and phone number exists
+        if (userPrefs.smsReminders && userPrefs.phoneNumber) {
+          await fetch('/api/send-sms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: userPrefs.phoneNumber,
+              message: reminderMessage
+            }),
+          });
+        }
+
+        await updateDoc(doc(db, 'tasks', task.id), {
+          reminderSent: true,
+        });
+        return true;
+      }
+    } catch (error) {
+      console.error('Error sending reminders:', error);
+      return false;
     }
+    
+    return false;
   };
 
   const PremiumUpgradePrompt = () => (
@@ -709,33 +728,47 @@ Your Task Manager`,
 
   useEffect(() => {
     console.log('Setting up reminder interval');
-    if (!user || !user.email) {
+    if (!user?.email) {
       console.log('No user or email - skipping reminder setup');
       return;
     }
 
-    // Check immediately when component mounts
-    const tasks = getCurrentTasks();
-    console.log('Current tasks:', tasks);
-    tasks.forEach(task => {
-      checkAndSendReminder(task);
-    });
+    // Keep track of reminded tasks to prevent duplicates
+    const remindedTasks = new Set();
+
+    const checkAndSendReminderOnce = async (task: Task) => {
+      // Create a unique key for this task and time
+      const now = new Date();
+      const reminderKey = `${task.id}-${now.getHours()}-${now.getMinutes()}`;
+      
+      // Only send if we haven't reminded for this task in this minute
+      if (!remindedTasks.has(reminderKey)) {
+        const shouldRemind = await checkAndSendReminder(task);
+        if (shouldRemind) {
+          remindedTasks.add(reminderKey);
+          // Clean up old entries after 2 minutes
+          setTimeout(() => remindedTasks.delete(reminderKey), 120000);
+        }
+      }
+    };
 
     // Set up the interval
     const reminderInterval = setInterval(() => {
       console.log('Checking reminders...');
       const currentTasks = getCurrentTasks();
-      currentTasks.forEach(task => {
-        checkAndSendReminder(task);
-      });
+      currentTasks.forEach(checkAndSendReminderOnce);
     }, 60000); // Check every minute
 
-    // Cleanup interval on unmount
+    // Initial check
+    const initialTasks = getCurrentTasks();
+    initialTasks.forEach(checkAndSendReminderOnce);
+
     return () => {
       console.log('Cleaning up reminder interval');
       clearInterval(reminderInterval);
+      remindedTasks.clear();
     };
-  }, [user, todayTasks, tomorrowTasks, showTomorrow, getCurrentTasks]); // Added getCurrentTasks
+  }, [user, getCurrentTasks]);
 
   useEffect(() => {
     if (!showTomorrow) {
@@ -793,8 +826,11 @@ Your Task Manager`,
         const defaultPrefs: UserPreferences = {
           userId: user.uid,
           emailReminders: true,
+          smsReminders: false,
+          phoneNumber: '',
           reminderTime: 10,
           email: user.email || '',
+          defaultView: 'today'
         };
         
         await setDoc(doc(db, 'userPreferences', user.uid), defaultPrefs);
@@ -1084,13 +1120,14 @@ Your Task Manager`,
   const canModifyTasks = () => showTomorrow || showFullSchedule
 
   const handleHourClick = (hour: number) => {
-    if (!canModifyTasks()) {
-      showToast("Switch to edit mode to modify tasks.", 'info')
+    if (!user) {
+      showToast('Please sign in to create tasks', 'info')
       return
     }
 
-    if (!user) {
-      showToast('Please sign in to create tasks', 'info')
+    // Allow task creation in Tomorrow's tab or when in edit mode (showFullSchedule)
+    if (!showTomorrow && !showFullSchedule) {
+      showToast("Switch to edit mode to modify tasks.", 'info')
       return
     }
 
@@ -1109,6 +1146,7 @@ Your Task Manager`,
       }
     } else {
       const newTask: Task = {
+        title: '',
         startTime: hour,
         duration: 1,
         activity: '',
@@ -1545,6 +1583,35 @@ Your Task Manager`,
                       </div>
                     </Link>
 
+                    {/* Add Preferences Link */}
+                    <Link
+                      href="/preferences"
+                      className={`block px-4 py-2 text-sm
+                        ${theme === 'dark'
+                          ? 'text-slate-300 hover:bg-slate-700'
+                          : 'text-slate-700 hover:bg-slate-50'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            strokeWidth={2} 
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                          />
+                          <path 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            strokeWidth={2} 
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                        </svg>
+                        Preferences
+                      </div>
+                    </Link>
+
                     {/* Sign out button */}
                     <button
                       onClick={logout}
@@ -1855,160 +1922,22 @@ Your Task Manager`,
             <>
               {/* AI Suggestions Section */}
               {isPremiumUser ? (
-                // Existing suggestions component
-                <div className="max-w-4xl mx-auto mb-6">
-                  <motion.div
-                    layout
-                    className={`
-                      rounded-2xl border-2 overflow-hidden
-                      ${theme === 'dark'
-                        ? 'bg-slate-800/90 border-violet-500/20 backdrop-blur-lg'
-                        : 'bg-white/90 border-violet-100 backdrop-blur-lg'
-                      }
-                    `}
-                  >
-                    <div
-                      onClick={() => isPremiumUser && setIsSuggestionsExpanded(prev => !prev)}
-                      className={`
-                        w-full p-4 flex items-center justify-between
-                        ${isPremiumUser ? 'cursor-pointer' : 'cursor-default'}
-                        ${theme === 'dark' ? 'hover:bg-slate-700/50' : 'hover:bg-slate-50'}
-                        transition-colors
-                      `}
-                    >
-                      <div className="flex items-center gap-3">
-                        <svg 
-                          className={`w-5 h-5 ${theme === 'dark' ? 'text-violet-400' : 'text-violet-500'}`}
-                          fill="none" 
-                          viewBox="0 0 24 24" 
-                          stroke="currentColor"
-                        >
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
-                            d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                          />
-                        </svg>
-                        <div className="text-left">
-                          <h2 className={`text-lg font-medium flex items-center gap-2
-                            ${theme === 'dark' ? 'text-white' : 'text-slate-900'}
-                          `}>
-                            AI Suggestions
-                            {!isPremiumUser && (
-                              <span className={`
-                                text-xs px-2 py-0.5 rounded-full
-                                ${theme === 'dark' ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-600'}
-                              `}>
-                                Premium
-                              </span>
-                            )}
-                          </h2>
-                          <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                            {isPremiumUser 
-                              ? 'Based on your previous activities'
-                              : 'Upgrade to Pro to unlock AI suggestions'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {isPremiumUser ? (
-                        // Existing premium user controls
-                        <div className="flex items-center gap-2">
-                          <button
-                      onClick={(e) => {
-                              e.stopPropagation();
-                              loadSuggestions();
-                            }}
-                            disabled={isLoadingSuggestions}
-                            className={`
-                              p-2 rounded-lg transition-colors flex items-center gap-2 text-sm
-                              ${theme === 'dark'
-                                ? 'hover:bg-slate-700 text-slate-300'
-                                : 'hover:bg-slate-100 text-slate-600'
-                              }
-                              ${isLoadingSuggestions ? 'opacity-50 cursor-not-allowed' : ''}
-                            `}
-                            aria-label="Refresh suggestions"
-                          >
-                            <svg className={`w-4 h-4 ${isLoadingSuggestions ? 'animate-spin' : ''}`} 
-                              fill="none" 
-                              viewBox="0 0 24 24" 
-                              stroke="currentColor"
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
-                              />
-                            </svg>
-                          </button>
-                          <svg 
-                            className={`w-5 h-5 transition-transform duration-200
-                              ${isSuggestionsExpanded ? 'rotate-180' : ''}
-                              ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
-                            `}
-                            fill="none" 
-                            viewBox="0 0 24 24" 
-                            stroke="currentColor"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-                      ) : (
-                        // Upgrade button for non-premium users
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                          router.push('/premium');
-                          }}
-                          className={`
-                            px-4 py-2 rounded-lg text-sm font-medium
-                            ${theme === 'dark'
-                              ? 'bg-violet-500 hover:bg-violet-600 text-white'
-                              : 'bg-violet-600 hover:bg-violet-700 text-white'
-                            }
-                          `}
-                        >
-                          Upgrade
-                        </button>
-                      )}
-                    </div>
-
-                    {isPremiumUser && isSuggestionsExpanded && (
-                      <AnimatePresence>
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className={`border-t ${theme === 'dark' ? 'border-slate-700' : 'border-slate-200'}`}
-                        >
-                          <div className="p-4 space-y-3">
-                            {suggestions.map((suggestion, index) => (
-                              <SuggestedTaskCard
-                                key={index}
-                                suggestion={suggestion}
-                                theme={theme || 'light'}
-                                existingTasks={tomorrowTasks}
-                                onAccept={(task) => {
-                                  setEditingTask(task as Task);
-                                  setShowTaskModal(true);
-                                }}
-                                onRemove={() => {
-                                  setSuggestions(prev => prev.filter((_, i) => i !== index));
-                                }}
-                                user={user}
-                                setTomorrowTasks={setTomorrowTasks}
-                                // setPlannedHours={setPlannedHours}
-                              />
-                            ))}
-                          </div>
-                        </motion.div>
-                      </AnimatePresence>
-                    )}
-                  </motion.div>
-                </div>
+                <AITaskSuggestions
+                  theme={theme || 'light'}
+                  isPremiumUser={isPremiumUser}
+                  isSuggestionsExpanded={isSuggestionsExpanded}
+                  setIsSuggestionsExpanded={setIsSuggestionsExpanded}
+                  suggestions={suggestions}
+                  isLoadingSuggestions={isLoadingSuggestions}
+                  loadSuggestions={loadSuggestions}
+                  getCurrentTasks={getCurrentTasks}
+                  setEditingTask={setEditingTask}
+                  setShowTaskModal={setShowTaskModal}
+                  setCurrentTasks={setCurrentTasks}
+                  setSuggestions={setSuggestions}
+                  user={user as User}
+                />
               ) : (
-                // Premium upgrade prompt
                 <PremiumUpgradePrompt />
               )}
             </>
@@ -2030,11 +1959,9 @@ Your Task Manager`,
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
                     <p className={`font-medium ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
-                      Want to modify today&apos;s schedule?
+                      Modify today&apos;s schedule
                     </p>
-                    <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                      Click here to view and edit all available time slots
-                    </p>
+                    
                   </div>
                   <svg
                     className={`w-5 h-5 transform transition-transform group-hover:translate-x-1
@@ -2053,159 +1980,41 @@ Your Task Manager`,
           {/* Show AI Suggestions when in edit mode for Today */}
           {!showTomorrow && showFullSchedule && (
           ( isPremiumUser) ?(
-            <div className="max-w-4xl mx-auto mb-6">
-              <motion.div
-                layout
-                className={`
-                  rounded-2xl border-2 overflow-hidden
-                  ${theme === 'dark'
-                    ? 'bg-slate-800/90 border-violet-500/20 backdrop-blur-lg'
-                    : 'bg-white/90 border-violet-100 backdrop-blur-lg'
-                  }
-                `}
-              >
-                
-                <div
-                  onClick={() => setIsSuggestionsExpanded(prev => !prev)}
-                  className={`
-                    w-full p-4 flex items-center justify-between cursor-pointer
-                    ${theme === 'dark' ? 'hover:bg-slate-700/50' : 'hover:bg-slate-50'}
-                    transition-colors
-                  `}
-                >
-                  <div className="flex items-center gap-3">
-                    <svg 
-                      className={`w-5 h-5 ${theme === 'dark' ? 'text-violet-400' : 'text-violet-500'}`}
-                      fill="none" 
-                      viewBox="0 0 24 24" 
-                      stroke="currentColor"
-                    >
-                        <path 
-                          strokeLinecap="round" 
-                          strokeLinejoin="round" 
-                          strokeWidth={2} 
-                        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                        />
-                      </svg>
-                    <div className="text-left">
-                      <h2 className={`text-lg font-medium
-                        ${theme === 'dark' ? 'text-white' : 'text-slate-900'}
-                      `}>
-                        AI Suggestions for Today
-                      </h2>
-                      <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Add tasks based on your previous activities
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        loadSuggestions();
-                      }}
-                      disabled={isLoadingSuggestions}
-                      className={`
-                        p-2 rounded-lg transition-colors flex items-center gap-2 text-sm
-                        ${theme === 'dark'
-                          ? 'hover:bg-slate-700 text-slate-300'
-                          : 'hover:bg-slate-100 text-slate-600'
-                        }
-                        ${isLoadingSuggestions ? 'opacity-50 cursor-not-allowed' : ''}
-                      `}
-                    >
-                      <svg className={`w-4 h-4 ${isLoadingSuggestions ? 'animate-spin' : ''}`} 
-                        fill="none" 
-                        viewBox="0 0 24 24" 
-                        stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
-                        />
-                      </svg>
-                    </button>
-                    <svg 
-                      className={`w-5 h-5 transition-transform duration-200
-                        ${isSuggestionsExpanded ? 'rotate-180' : ''}
-                        ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
-                      `}
-                      fill="none" 
-                      viewBox="0 0 24 24" 
-                      stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-
-                {isPremiumUser && isSuggestionsExpanded && (
-                  <AnimatePresence>
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className={`border-t ${theme === 'dark' ? 'border-slate-700' : 'border-slate-200'}`}
-                    >
-                      <div className="p-4 space-y-3">
-                        {suggestions.map((suggestion, index) => (
-                          <SuggestedTaskCard
-                            key={index}
-                            suggestion={suggestion}
-                            theme={theme || 'light'}
-                            existingTasks={todayTasks}
-                            onAccept={(task) => {
-                              setEditingTask(task as Task);
-                              setShowTaskModal(true);
-                            }}
-                            onRemove={() => {
-                              setSuggestions(prev => prev.filter((_, i) => i !== index));
-                            }}
-                            user={user}
-                            setTomorrowTasks={setTodayTasks}
-                            // setPlannedHours={setPlannedHours}
-                          />
-                        ))}
-                      </div>
-                    </motion.div>
-                  </AnimatePresence>
-                )}
-              </motion.div>
-            </div>
+            <AITaskSuggestions
+                  theme={theme || 'light'}
+                  isPremiumUser={isPremiumUser}
+                  isSuggestionsExpanded={isSuggestionsExpanded}
+                  setIsSuggestionsExpanded={setIsSuggestionsExpanded}
+                  suggestions={suggestions}
+                  isLoadingSuggestions={isLoadingSuggestions}
+                  loadSuggestions={loadSuggestions}
+                  getCurrentTasks={getCurrentTasks}
+                  setEditingTask={setEditingTask}
+                  setShowTaskModal={setShowTaskModal}
+                  setCurrentTasks={setCurrentTasks}
+                  setSuggestions={setSuggestions}
+                  user={user as User}
+                />
           ): (<PremiumUpgradePrompt />))}
 
-          {/* Add edit mode indicator HERE - before the stats card */}
+          {/* Edit mode indicator - Simplified and more compact */}
           {!showTomorrow && showFullSchedule && (
             <div className={`
-              p-4 rounded-xl
+              inline-flex items-center gap-2 px-4 py-2 rounded-lg
               ${theme === 'dark'
                 ? 'bg-violet-500/20 border border-violet-500/10'
                 : 'bg-violet-50 border border-violet-100'
               }
             `}>
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className={`font-medium ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}>
-                    Edit Mode Active
-                  </p>
-                  <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                    You can now modify today&apos;s schedule
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowFullSchedule(false)}
-                  className={`
-                    px-4 py-2 rounded-lg text-sm font-medium
-                    ${theme === 'dark'
-                      ? 'bg-slate-800 hover:bg-slate-700'
-                      : 'bg-white hover:bg-slate-50'
-                    }
-                  `}
-                >
-                  Exit Edit Mode
-                </button>
-              </div>
+              <span className={`
+                text-sm font-medium
+                ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}
+              `}>
+                Edit Mode Active
+              </span>
+              <div className={`w-2 h-2 rounded-full animate-pulse
+                ${theme === 'dark' ? 'bg-violet-400' : 'bg-violet-500'}
+              `} />
             </div>
           )}
           {/* Task list with gaming aesthetic */}
@@ -2513,7 +2322,7 @@ Your Task Manager`,
               <div className={`px-3 py-1 rounded-full text-sm
                 ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-100'}`}
               >
-                {formatTime(editingTask?.startTime || 0)} - {formatTime((editingTask?.startTime || 0) + (editingTask?.duration || 0))}
+                { formatTime(editingTask?.startTime || 0)} - {formatTime((editingTask?.startTime || 0) + (editingTask?.duration || 0))}
               </div>
             </div>
 
@@ -2591,7 +2400,84 @@ Your Task Manager`,
         </div>
       )}
 
-      {!showTomorrow ? null : (
+      {/* Combined Edit Mode Controls */}
+      {!showTomorrow && showFullSchedule && (
+        <div className="fixed bottom-8 right-8 flex gap-4 z-50">
+          {isCombineMode ? (
+            <>
+              <button
+                onClick={createTask}
+                className={`
+                  p-4 rounded-full shadow-lg flex items-center gap-2
+                  transition-all duration-300 transform scale-110
+                  ${theme === 'dark'
+                    ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }
+                `}
+              >
+                <span>Create Combined Task</span>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+              <button
+                onClick={() => {
+                  setIsCombineMode(false)
+                  setSelectionStart(null)
+                  setSelectionEnd(null)
+                }}
+                className={`
+                  p-4 rounded-full shadow-lg
+                  transition-all duration-300
+                  ${theme === 'dark'
+                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                    : 'bg-red-50 text-red-600 hover:bg-red-100'
+                  }
+                `}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setIsCombineMode(true)}
+                className={`
+                  p-4 rounded-full shadow-lg flex items-center gap-2
+                  ${theme === 'dark'
+                    ? 'bg-slate-800 hover:bg-slate-700 text-white'
+                    : 'bg-white hover:bg-slate-50 text-slate-900'
+                  }
+                `}
+              >
+                <span>Combine Hours</span>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setShowFullSchedule(false)}
+                className={`
+                  p-4 rounded-full shadow-lg flex items-center gap-2
+                  ${theme === 'dark'
+                    ? 'bg-slate-800 hover:bg-slate-700 text-white'
+                    : 'bg-white hover:bg-slate-50 text-slate-900'
+                  }
+                `}
+              >
+                <span>Exit Edit Mode</span>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Tomorrow's View Combine Button */}
+      {showTomorrow && (
         <div className="fixed bottom-8 right-8 flex gap-4 z-50">
           <button
             onClick={() => {
@@ -2611,7 +2497,7 @@ Your Task Manager`,
                 : theme === 'dark'
                   ? 'bg-slate-800 hover:bg-slate-700 text-white'
                   : 'bg-white hover:bg-slate-50 text-slate-900'
-              }
+                }
               ${isCombineMode ? 'scale-110' : 'scale-100'}
             `}
           >
@@ -2653,29 +2539,6 @@ Your Task Manager`,
         </div>
       )}
 
-      {/* Add button to return to compact view */}
-      {!showTomorrow && showFullSchedule && (
-        <div className="fixed bottom-8 right-8 z-50">
-          <button
-            onClick={() => setShowFullSchedule(false)}
-            className={`
-              p-4 rounded-full shadow-lg flex items-center gap-2
-              ${theme === 'dark'
-                ? 'bg-slate-800 hover:bg-slate-700 text-white'
-                : 'bg-white hover:bg-slate-50 text-slate-900'
-              }
-            `}
-          >
-            <span>Show Only Tasks</span>
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </button>
-        </div>
-      )}
-
       {/* Detail Popup */}
       {showDetailPopup && editingTask && (
         <TaskDetailPopup
@@ -2707,5 +2570,3 @@ Your Task Manager`,
     </div>
   )
 }
-
-// Add a premium upgrade prompt component

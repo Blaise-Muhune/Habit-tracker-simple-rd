@@ -4,13 +4,13 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getAnalytics } from 'firebase/analytics'
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCfJtVXjJ4PoWKiidrl1gG6EcUhADArD-U",
-  authDomain: "simple-r-ef519.firebaseapp.com",
-  projectId: "simple-r-ef519",
-  storageBucket: "simple-r-ef519.firebasestorage.app",
-  messagingSenderId: "614246022655",
-  appId: "1:614246022655:web:cd26bfa09bb74737b3fbca",
-  measurementId: "G-M8GQGC3GJ1"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 }
 
 // Initialize Firebase
