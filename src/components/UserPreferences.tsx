@@ -6,14 +6,67 @@ import { UserPreferences as UserPreferencesType } from '@/types';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 
+const ToggleSwitch = ({ 
+  enabled, 
+  onChange, 
+  disabled = false 
+}: { 
+  enabled: boolean; 
+  onChange: (checked: boolean) => void; 
+  disabled?: boolean;
+}) => {
+  const { theme } = useTheme();
+  
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onChange(!enabled)}
+      className={`
+        relative inline-flex h-6 w-11 items-center rounded-full
+        transition-colors duration-200 ease-in-out focus:outline-none
+        focus:ring-2 focus:ring-violet-500 focus:ring-offset-2
+        ${disabled 
+          ? theme === 'dark'
+            ? 'bg-slate-700 cursor-not-allowed'
+            : 'bg-slate-200 cursor-not-allowed'
+          : enabled
+            ? 'bg-violet-500'
+            : theme === 'dark'
+              ? 'bg-slate-700'
+              : 'bg-slate-200'
+        }
+        ${theme === 'dark' ? 'focus:ring-offset-slate-800' : 'focus:ring-offset-white'}
+      `}
+    >
+      <span
+        className={`
+          ${enabled ? 'translate-x-6' : 'translate-x-1'}
+          inline-block h-4 w-4 transform rounded-full
+          transition duration-200 ease-in-out
+          ${disabled
+            ? theme === 'dark'
+              ? 'bg-slate-600'
+              : 'bg-slate-300'
+            : 'bg-white'
+          }
+        `}
+      />
+    </button>
+  );
+};
+
 const UserPreferences = () => {
   const { user } = useAuth();
-  const [isPremiumUser, setIsPremiumUser] = useState(false);
-  const router = useRouter();
   const { theme } = useTheme();
+  const router = useRouter();
+  
+  // All preferences state
+  const [isPremiumUser, setIsPremiumUser] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [smsEnabled, setSmsEnabled] = useState(false);
   const [emailEnabled, setEmailEnabled] = useState(true);
+  const [defaultView, setDefaultView] = useState<'today' | 'schedule'>('today');
+  const [reminderTime, setReminderTime] = useState(10);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,23 +76,20 @@ const UserPreferences = () => {
       if (!user) return;
       
       try {
+        // Get premium status
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const isPremium = userDoc.data()?.isPremium || false;
+        setIsPremiumUser(isPremium);
+
+        // Get preferences
         const prefsDoc = await getDoc(doc(db, 'userPreferences', user.uid));
         if (prefsDoc.exists()) {
           const prefs = prefsDoc.data() as UserPreferencesType;
           setPhoneNumber(prefs.phoneNumber || '');
           setSmsEnabled(prefs.smsReminders || false);
           setEmailEnabled(prefs.emailReminders ?? true);
-        }
-
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        setIsPremiumUser(userDoc.data()?.isPremium || false);
-        // Reset SMS preferences if user is not premium
-        if (!isPremiumUser && smsEnabled) {
-          setSmsEnabled(false);
-          await setDoc(doc(db, 'userPreferences', user.uid), {
-            smsReminders: false,
-            phoneNumber: null
-          }, { merge: true });
+          setDefaultView(prefs.defaultView || 'today');
+          setReminderTime(prefs.reminderTime || 10);
         }
       } catch (err) {
         console.error('Error loading preferences:', err);
@@ -50,7 +100,7 @@ const UserPreferences = () => {
     };
 
     loadPreferences();
-  }, [user, isPremiumUser]);
+  }, [user]);
 
   const validatePhoneNumber = (number: string) => {
     // Basic validation for E.164 format
@@ -92,12 +142,12 @@ const UserPreferences = () => {
         phoneNumber: smsEnabled ? phoneNumber : null,
         smsReminders: smsEnabled,
         emailReminders: emailEnabled,
-        reminderTime: 10, // Default 10 minutes
+        reminderTime: reminderTime,
         email: user.email || '',
-        defaultView: 'today'
+        defaultView: defaultView
       };
 
-      await setDoc(doc(db, 'userPreferences', user.uid), preferences, { merge: true });
+      await setDoc(doc(db, 'userPreferences', user.uid), preferences);
       setError('Preferences saved successfully!');
     } catch (err) {
       console.error('Error saving preferences:', err);
@@ -109,137 +159,184 @@ const UserPreferences = () => {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center p-4">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+      <div className="flex justify-center items-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-md mx-auto p-6">
-      <div className="space-y-4">
-        <h2 className={`text-xl font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-          Notification Preferences
-        </h2>
-
-        {/* Email Notifications */}
-        <div className="flex items-center justify-between">
-          <label className={`font-medium ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
-            Email Notifications
-          </label>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={emailEnabled}
-              onChange={(e) => setEmailEnabled(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-          </label>
-        </div>
-
-        {/* SMS Notifications */}
-        <div className="relative">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <label className={`font-medium ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
-                SMS Notifications
-              </label>
-              <span className={`text-xs px-2 py-0.5 rounded-full
-                ${theme === 'dark' 
-                  ? 'bg-violet-500/20 text-violet-400' 
-                  : 'bg-violet-100 text-violet-600'
-                }`}
-              >
-                PRO
-              </span>
+    <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
+      {/* Notification Settings */}
+      <div className="space-y-4 sm:space-y-6">
+        <h3 className={`text-base sm:text-lg font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+          <div className="flex items-center gap-2">
+            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center
+              ${theme === 'dark' ? 'bg-violet-500/20' : 'bg-violet-50'}`}
+            >
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" 
+                />
+              </svg>
             </div>
-            <label className="relative inline-flex items-center">
-              <input
-                type="checkbox"
-                checked={smsEnabled}
-                onChange={(e) => {
-                  if (!isPremiumUser) {
-                    router.push('/premium');
-                    return;
-                  }
-                  setSmsEnabled(e.target.checked);
-                }}
-                disabled={!isPremiumUser}
-                className={`sr-only peer ${!isPremiumUser ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-              />
-              <div className={`w-11 h-6 rounded-full peer 
-                after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
-                after:bg-white after:border-gray-300 after:border after:rounded-full 
-                after:h-5 after:w-5 after:transition-all
-                ${!isPremiumUser
-                  ? theme === 'dark'
-                    ? 'bg-gray-600 after:border-gray-600'
-                    : 'bg-gray-300 after:border-gray-300'
-                  : smsEnabled
-                    ? 'bg-blue-600 after:translate-x-full after:border-white'
-                    : theme === 'dark'
-                      ? 'bg-gray-700 peer-focus:ring-blue-800'
-                      : 'bg-gray-200 peer-focus:ring-blue-300'
-                }
-                peer-focus:outline-none peer-focus:ring-4`}
-              />
-            </label>
+            <span className="text-sm sm:text-base">Notifications</span>
+          </div>
+        </h3>
+        
+        <div className={`space-y-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border
+          ${theme === 'dark'
+            ? 'bg-slate-800/50 border-slate-700'
+            : 'bg-white border-slate-200'
+          }`}
+        >
+          {/* Email Notifications */}
+          <div className="flex items-start sm:items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <label className={`block text-sm sm:text-base font-medium ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                Email Notifications
+              </label>
+              <p className={`mt-0.5 text-xs sm:text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                Receive task reminders via email
+              </p>
+            </div>
+            <ToggleSwitch
+              enabled={emailEnabled}
+              onChange={setEmailEnabled}
+            />
           </div>
 
-          {/* Premium Upgrade Prompt - Now appears below the toggle */}
-          {!isPremiumUser && (
-            <div className={`mt-2 p-3 rounded-lg cursor-pointer
-              ${theme === 'dark'
-                ? 'bg-violet-500/10 hover:bg-violet-500/20'
-                : 'bg-violet-50 hover:bg-violet-100'
-              }`}
-              onClick={() => router.push('/premium')}
-            >
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                    d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-                  />
-                </svg>
-                <span className={`text-sm ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}>
-                  Upgrade to Pro to enable SMS notifications
+          {/* SMS Notifications */}
+          <div className="flex items-start sm:items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className={`text-sm sm:text-base font-medium ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                  SMS Notifications
+                </label>
+                <span className={`px-1.5 sm:px-2 py-0.5 text-xs font-medium rounded-full
+                  ${theme === 'dark' 
+                    ? 'bg-violet-500/20 text-violet-400' 
+                    : 'bg-violet-100 text-violet-600'
+                  }`}
+                >
+                  PRO
                 </span>
               </div>
+              <p className={`mt-0.5 text-xs sm:text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                Get instant notifications via text message
+              </p>
+            </div>
+            <ToggleSwitch
+              enabled={smsEnabled}
+              onChange={(checked) => {
+                if (!isPremiumUser) {
+                  router.push('/premium');
+                  return;
+                }
+                setSmsEnabled(checked);
+              }}
+              disabled={!isPremiumUser}
+            />
+          </div>
+
+          {/* Phone Number Input */}
+          {isPremiumUser && smsEnabled && (
+            <div className="space-y-1.5 sm:space-y-2">
+              <label className={`block text-sm font-medium ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                Phone Number
+              </label>
+              <input
+                type="tel"
+                value={phoneNumber}
+                onChange={handlePhoneChange}
+                placeholder="+1XXXXXXXXXX"
+                className={`w-full px-3 sm:px-4 py-2 rounded-lg border text-sm transition-colors
+                  ${theme === 'dark' 
+                    ? 'bg-slate-800 border-slate-600 text-white focus:border-violet-500' 
+                    : 'bg-white border-gray-200 text-gray-900 focus:border-violet-500'
+                  } focus:ring-1 focus:ring-violet-500 focus:outline-none`}
+              />
             </div>
           )}
         </div>
 
-        {/* Phone Number Input - Only show if premium and SMS enabled */}
-        {isPremiumUser && smsEnabled && (
-          <div className="space-y-2">
-            <label className={`block font-medium ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
-              Phone Number
-            </label>
-            <input
-              type="tel"
-              value={phoneNumber}
-              onChange={handlePhoneChange}
-              placeholder="+1XXXXXXXXXX"
-              className={`w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:outline-none
-                ${theme === 'dark' 
-                  ? 'bg-gray-800 border-gray-700 text-white' 
-                  : 'bg-white border-gray-300'
-                }`}
-            />
-            <p className="text-sm text-gray-500">
-              Format: +1XXXXXXXXXX (US/Canada)
-            </p>
+        {/* Default View Section */}
+        <h3 className={`text-base sm:text-lg font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+          <div className="flex items-center gap-2">
+            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center
+              ${theme === 'dark' ? 'bg-blue-500/20' : 'bg-blue-50'}`}
+            >
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                  d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                />
+              </svg>
+            </div>
+            <span className="text-sm sm:text-base">View Settings</span>
           </div>
-        )}
+        </h3>
+
+        <div className={`space-y-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border
+          ${theme === 'dark'
+            ? 'bg-slate-800/50 border-slate-700'
+            : 'bg-white border-slate-200'
+          }`}
+        >
+          {/* Settings Controls */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {/* Default View */}
+            <div className="space-y-1.5 sm:space-y-2">
+              <label className={`block text-sm font-medium ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                Default View
+              </label>
+              <select
+                value={defaultView}
+                onChange={(e) => setDefaultView(e.target.value as 'today' | 'schedule')}
+                className={`w-full px-3 sm:px-4 py-2 rounded-lg border text-sm transition-colors
+                  ${theme === 'dark'
+                    ? 'bg-slate-800 border-slate-600 text-white focus:border-violet-500'
+                    : 'bg-white border-gray-200 text-gray-900 focus:border-violet-500'
+                  } focus:ring-1 focus:ring-violet-500 focus:outline-none`}
+              >
+                <option value="today">Today's Tasks</option>
+                <option value="schedule">Full Schedule</option>
+              </select>
+            </div>
+
+            {/* Reminder Time */}
+            <div className="space-y-1.5 sm:space-y-2">
+              <label className={`block text-sm font-medium ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                Default Reminder Time
+              </label>
+              <select
+                value={reminderTime}
+                onChange={(e) => setReminderTime(Number(e.target.value))}
+                className={`w-full px-3 sm:px-4 py-2 rounded-lg border text-sm transition-colors
+                  ${theme === 'dark'
+                    ? 'bg-slate-800 border-slate-600 text-white focus:border-violet-500'
+                    : 'bg-white border-gray-200 text-gray-900 focus:border-violet-500'
+                  } focus:ring-1 focus:ring-violet-500 focus:outline-none`}
+              >
+                <option value="5">5 minutes before</option>
+                <option value="10">10 minutes before</option>
+                <option value="15">15 minutes before</option>
+                <option value="30">30 minutes before</option>
+                <option value="45">45 minutes before</option>
+                <option value="34">34 minutes before</option>
+                <option value="60">1 hour before</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
 
       {error && (
-        <div className={`p-3 rounded-lg ${
-          error.includes('success') 
-            ? 'bg-green-100 text-green-700 dark:bg-green-800/30 dark:text-green-400'
-            : 'bg-red-100 text-red-700 dark:bg-red-800/30 dark:text-red-400'
-        }`}>
+        <div className={`p-3 sm:p-4 rounded-lg sm:rounded-xl text-sm border
+          ${error.includes('success')
+            ? 'bg-green-500/10 text-green-500 border-green-500/20'
+            : 'bg-red-500/10 text-red-500 border-red-500/20'
+          }`}
+        >
           {error}
         </div>
       )}
@@ -247,13 +344,21 @@ const UserPreferences = () => {
       <button
         type="submit"
         disabled={saving}
-        className={`w-full py-2 px-4 rounded-lg font-medium transition-colors
-          ${saving 
-            ? 'bg-gray-400 cursor-not-allowed' 
-            : 'bg-blue-600 hover:bg-blue-500'
-          } text-white`}
+        className={`w-full px-4 py-2.5 sm:py-3 text-sm font-medium text-white rounded-lg sm:rounded-xl
+          transition-colors bg-violet-500 hover:bg-violet-600 disabled:opacity-50
+          disabled:cursor-not-allowed focus:outline-none focus:ring-2
+          focus:ring-violet-500 focus:ring-offset-2
+          ${theme === 'dark' ? 'focus:ring-offset-slate-800' : 'focus:ring-offset-white'}
+        `}
       >
-        {saving ? 'Saving...' : 'Save Preferences'}
+        {saving ? (
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+            <span>Saving...</span>
+          </div>
+        ) : (
+          'Save Preferences'
+        )}
       </button>
     </form>
   );

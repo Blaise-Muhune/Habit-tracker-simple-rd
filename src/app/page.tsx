@@ -117,43 +117,27 @@ const TaskDetailPopup = ({
             `}>
               {task.activity}
             </h3>
-            {task.description && (
+          </div>
+
+          {/* Description Section - Replacing Additional Details */}
+          {task.description && (
+            <div className={`rounded-xl p-6
+              ${theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-50'}
+            `}>
+              <h4 className={`font-medium mb-3 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                Description
+              </h4>
               <p className={`text-base
                 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
                 ${task.completed ? 'line-through opacity-50' : ''}
               `}>
                 {task.description}
               </p>
-            )}
-          </div>
-
-          {/* Additional Details Section */}
-          <div className={`rounded-xl p-6 space-y-4
-            ${theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-50'}
-          `}>
-            <h4 className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-              Additional Details
-            </h4>
-            
-            {/* Placeholder for future data */}
-            <div className="space-y-3">
-              <div className={`h-4 rounded w-2/3
-                ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'}
-                animate-pulse
-              `} />
-              <div className={`h-4 rounded w-1/2
-                ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'}
-                animate-pulse
-              `} />
-              <div className={`h-4 rounded w-3/4
-                ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'}
-                animate-pulse
-              `} />
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Footer - Updated with all action buttons */}
+        {/* Footer - Action buttons */}
         <div className={`px-6 py-4 border-t
           ${theme === 'dark' ? 'border-slate-800' : 'border-slate-200'}
         `}>
@@ -318,8 +302,8 @@ export default function DailyTaskManager() {
       taskDate.setMinutes(0);
       taskDate.setSeconds(0);
       
-      // const reminderTime = new Date(taskDate.getTime() - userPrefs.reminderTime * 60000);
-      const reminderTime = new Date(taskDate.getTime() - 15 * 60000);
+      const reminderTime = new Date(taskDate.getTime() - userPrefs.reminderTime * 60000);
+      // const reminderTime = new Date(taskDate.getTime() - 15 * 60000);
       const now = new Date();
 
       const isWithinOneMinute = Math.abs(reminderTime.getTime() - now.getTime()) <= 60000;
@@ -348,7 +332,8 @@ export default function DailyTaskManager() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               to: userPrefs.phoneNumber,
-              message: reminderMessage
+              message: reminderMessage,
+              userId: user.uid
             }),
           });
         }
@@ -1149,6 +1134,19 @@ export default function DailyTaskManager() {
     )
   }
 
+  const handleTaskClick = (task: Task) => {
+    setEditingTask(task);
+    if (showFullSchedule) {
+      // In edit mode - show edit modal
+      setShowTaskModal(true);
+      setShowDetailPopup(false);
+    } else {
+      // In view mode - show detail popup
+      setShowTaskModal(false);
+      setShowDetailPopup(true);
+    }
+  };
+
   return (
     <div className={`h-screen overflow-auto ${theme === 'dark' 
       ? 'bg-[#0B1120] text-white' // Deep space blue background
@@ -1743,17 +1741,7 @@ export default function DailyTaskManager() {
                     key={hour}
                     onClick={(e) => {
                       if (!(e.target as HTMLElement).closest('button')) {
-                        if (showFullSchedule) {
-                          // If in edit mode, go straight to edit
-                          setEditingTask(task)
-                          // setShowTaskModal(true)
-    } else {
-                          // If not in edit mode, show detail popup
-                          setEditingTask(task)
-                          // setShowDetailPopup(true)
-                          setShowTaskModal(true)
-
-                        }
+                        handleTaskClick(task);
                       }
                     }}
                     className={`
@@ -1990,7 +1978,7 @@ export default function DailyTaskManager() {
       </div>
 
       {/* Task Modal */}
-      {showTaskModal && (
+      {showTaskModal && editingTask && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -2235,20 +2223,11 @@ export default function DailyTaskManager() {
             setShowDetailPopup(false)
             setEditingTask(null)
           }}
-          theme={theme || 'light'} // Provide a default value
-          isEditMode={showFullSchedule}
-          onModify={() => {
-            setShowDetailPopup(false)
-            setShowTaskModal(true)
-          }}
-          onPriorityToggle={() => {
-            handlePriorityToggle(editingTask)
-          }}
-          onDelete={() => {
-            handleTaskDelete(editingTask)
-            setShowDetailPopup(false)
-            setEditingTask(null)
-          }}
+          theme={theme || 'light'}
+          isEditMode={false}
+          onModify={() => {}}
+          onPriorityToggle={() => handlePriorityToggle(editingTask)}
+          onDelete={() => handleTaskDelete(editingTask)}
         />
       )}
 
