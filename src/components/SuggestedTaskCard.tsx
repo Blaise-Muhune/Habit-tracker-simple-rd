@@ -4,21 +4,17 @@ import { User } from 'firebase/auth'
 interface SuggestedTaskCardProps {
   suggestion: SuggestedTask
   theme: string
-  existingTasks: Task[]
   onAccept: (task: Partial<Task>) => void
   onRemove: () => void
   user: User | null
-  setTomorrowTasks: (tasks: Task[]) => void
 }
 
 export default function SuggestedTaskCard({
   suggestion,
   theme,
-  existingTasks,
   onAccept,
   onRemove,
   user,
-  setTomorrowTasks
 }: SuggestedTaskCardProps) {
   const formatTime = (hour: number) => {
     const ampm = hour >= 12 ? 'PM' : 'AM';

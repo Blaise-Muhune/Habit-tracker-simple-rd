@@ -137,7 +137,6 @@ export default function AITaskSuggestions({
                         key={index}
                         suggestion={suggestion}
                         theme={theme}
-                        existingTasks={getCurrentTasks()}
                         onAccept={(task: Partial<Task>) => {
                           setEditingTask(task as Task);
                           setShowTaskModal(true);
@@ -146,7 +145,6 @@ export default function AITaskSuggestions({
                           setSuggestions(prev => prev.filter((_, i) => i !== index));
                         }}
                         user={user}
-                        setTomorrowTasks={(tasks: Task[]) => setCurrentTasks(tasks)}
                       />
                     ))
                   ) : (
