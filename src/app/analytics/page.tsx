@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { HistoricalTask } from '@/types'
-import { Line, Bar, Doughnut } from 'react-chartjs-2'
+import { Bar, Doughnut } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
   CategoryScale,

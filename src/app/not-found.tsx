@@ -41,7 +41,7 @@ export default function NotFound() {
           <p className={`text-lg mb-8 max-w-md mx-auto
             ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}
           >
-            Oops! The page you're looking for doesn't exist or has been moved.
+            Oops! The page you&apos;re looking for doesn&apos;t exist or has been moved.
           </p>
 
           {/* Home Button */}

@@ -1,6 +1,6 @@
 import { OpenAI } from 'openai'
 import { NextResponse } from 'next/server'
-import { Task, SuggestedTask } from '@/types'
+import { SuggestedTask } from '@/types'
 import { db } from '@/lib/firebase'
 import { addDoc, collection, query, where, getDocs } from 'firebase/firestore'
 
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
     }
 
     // Validate each suggestion matches our interface
-    const validatedSuggestions = parsedResponse.suggestions.map((suggestion: any): SuggestedTask => {
+    const validatedSuggestions = parsedResponse.suggestions.map((suggestion: SuggestedTask): SuggestedTask => {
       if (
         typeof suggestion.activity !== 'string' ||
         typeof suggestion.startTime !== 'number' ||
@@ -184,7 +184,7 @@ export async function POST(request: Request) {
     // Store suggestions in Firebase
     try {
       const suggestionsRef = collection(db, 'suggestions')
-      await Promise.all(validatedSuggestions.map(suggestion => 
+      await Promise.all(validatedSuggestions.map((suggestion: SuggestedTask) => 
         addDoc(suggestionsRef, suggestion)
       ))
       console.log('Suggestions stored in Firebase')

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { UserPreferences as UserPreferencesType, PushSubscriptionJSON } from '@/types';
+import { UserPreferences as UserPreferencesType } from '@/types';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 

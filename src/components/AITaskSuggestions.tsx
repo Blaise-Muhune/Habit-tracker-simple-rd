@@ -1,6 +1,5 @@
 import { Task, SuggestedTask } from "@/types";
 import { motion, AnimatePresence } from "framer-motion";
-import { formatDistanceToNow } from 'date-fns';
 import { User } from 'firebase/auth';
 import SuggestedTaskCard from './SuggestedTaskCard';
 import { useState } from 'react';
@@ -28,7 +27,6 @@ export default function AITaskSuggestions({
     setIsSuggestionsExpanded,
     suggestions,
     isLoadingSuggestions,
-    loadSuggestions,
     getCurrentTasks,
     setEditingTask,
     setShowTaskModal,
