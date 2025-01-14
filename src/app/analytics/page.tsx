@@ -149,6 +149,7 @@ export default function AnalyticsPage() {
         historicalTasks = Array.from({ length: 30 }, (_, i) => ({
           id: `fake-${i}`,
           userId: user.uid,
+          description: `Sample Task ${i}`,
           title: `Sample Task ${i}`,
           completed: seededRandom(i) > 0.3,
           isPriority: seededRandom(i + 100) > 0.7,
