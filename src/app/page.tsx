@@ -962,9 +962,7 @@ export default function DailyTaskManager() {
   // ])
 
   const handleTaskComplete = async (task: Task) => {
-    if (task.completed) {
-      await archiveTask(task)
-    }
+    
     handleTaskUpdate(task, { completed: !task.completed })
   }
 
@@ -1029,18 +1027,7 @@ export default function DailyTaskManager() {
     }
   }
 
-  // When a task is completed, it should be archived to taskHistory
-  const archiveTask = async (task: Task) => {
-    const historicalTask: HistoricalTask = {
-      ...task,
-      originalDate: task.date,
-      actualDate: new Date().toISOString().split('T')[0],
-      archivedAt: Date.now(),
-      completedDate: new Date().toISOString(),
-    }
 
-    await addDoc(collection(db, 'taskHistory'), historicalTask)
-  }
 
   // Add this function to handle tour steps
   const getTourSteps = () => [
@@ -2236,6 +2223,7 @@ export default function DailyTaskManager() {
           onNext={handleNextStep}
           onPrev={handlePrevStep}
           onComplete={handleTourComplete}
+          onSkip={handleTourComplete} // Use the same handler as complete
           theme={theme || 'light'}
         />
       )}

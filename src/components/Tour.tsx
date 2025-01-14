@@ -14,6 +14,7 @@ interface TourProps {
   onNext: () => void
   onPrev: () => void
   onComplete: () => void
+  onSkip: () => void
   theme: string
 }
 
@@ -22,7 +23,8 @@ export const Tour = ({
   currentStep, 
   onNext, 
   onPrev, 
-  onComplete, 
+  onComplete,
+  onSkip,
   theme 
 }: TourProps) => {
   const [elementPosition, setElementPosition] = useState({ top: 0, left: 0, width: 0, height: 0 })
@@ -113,6 +115,18 @@ export const Tour = ({
               ))}
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={onSkip}
+                className={`
+                  px-3 py-1.5 rounded-lg text-sm font-medium
+                  ${theme === 'dark'
+                    ? 'text-slate-400 hover:text-slate-300'
+                    : 'text-slate-600 hover:text-slate-700'
+                  }
+                `}
+              >
+                Skip
+              </button>
               {currentStep > 0 && (
                 <button
                   onClick={onPrev}
