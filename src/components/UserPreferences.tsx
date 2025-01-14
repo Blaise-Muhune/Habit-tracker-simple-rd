@@ -152,7 +152,10 @@ const UserPreferences = () => {
         throw new Error('Invalid phone number format. Please use +1XXXXXXXXXX format');
       }
 
-      // If push is enabled but no subscription exists, try to set it up
+      // Get existing preferences first to preserve other fields
+      const existingPrefsDoc = await getDoc(doc(db, 'userPreferences', user.uid));
+      const existingPrefs = existingPrefsDoc.exists() ? existingPrefsDoc.data() : {};
+
       let currentSubscription = subscription;
       if (pushEnabled && !currentSubscription) {
         currentSubscription = await setupPushNotifications();
@@ -161,7 +164,6 @@ const UserPreferences = () => {
         }
       }
 
-      // Serialize the push subscription
       const serializedSubscription = currentSubscription ? {
         endpoint: currentSubscription.endpoint,
         keys: {
@@ -171,15 +173,18 @@ const UserPreferences = () => {
       } : null;
 
       const preferences: UserPreferencesType = {
+        ...existingPrefs, // Preserve existing fields
         userId: user.uid,
         phoneNumber: smsEnabled ? phoneNumber : null,
         smsReminders: smsEnabled,
         emailReminders: emailEnabled,
         pushReminders: pushEnabled,
-        pushSubscription: serializedSubscription, // Store serialized version
+        pushSubscription: serializedSubscription,
         reminderTime: reminderTime,
         email: user.email || '',
-        defaultView: defaultView
+        defaultView: defaultView,
+        // Preserve the tour status if it exists
+        hasCompletedTour: existingPrefs.hasCompletedTour
       };
 
       await setDoc(doc(db, 'userPreferences', user.uid), preferences);
@@ -469,7 +474,6 @@ const UserPreferences = () => {
                 <option value="10">10 minutes before</option>
                 <option value="15">15 minutes before</option>
                 <option value="30">30 minutes before</option>
-                <option value="40">40 minutes before</option>
               </select>
             </div>
           </div>

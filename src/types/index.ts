@@ -43,7 +43,7 @@ export interface UserPreferences {
   smsReminders: boolean;
   emailReminders: boolean;
   pushReminders: boolean;
-  pushSubscription: SerializedPushSubscription | null;
+  pushSubscription: any | null;
   reminderTime: number;
   email: string;
   defaultView: 'today' | 'schedule';
@@ -91,7 +91,7 @@ export interface UserPreferences {
   smsReminders: boolean;
   emailReminders: boolean;
   pushReminders: boolean;
-  pushSubscription: SerializedPushSubscription | null;
+  pushSubscription: any | null;
   reminderTime: number;
   email: string;
   defaultView: 'today' | 'schedule';
