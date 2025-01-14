@@ -12,11 +12,19 @@ export default function PreferencesPage() {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    setMounted(true)
+    const timer = setTimeout(() => {
+      setMounted(true)
+    }, 100)
+    
+    return () => clearTimeout(timer)
   }, [])
 
   if (!mounted) {
-    return null
+    return (
+      <div className="min-h-screen p-4 flex items-center justify-center">
+        <div className="animate-pulse">Loading...</div>
+      </div>
+    )
   }
 
   const currentTheme = theme === 'system' ? resolvedTheme : theme

@@ -75,36 +75,40 @@ const UserPreferences = () => {
 
   useEffect(() => {
     const loadPreferences = async () => {
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
       
       try {
-        // Get premium status
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        const isPremium = userDoc.data()?.isPremium || false;
-        setIsPremiumUser(isPremium);
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Loading preferences timed out')), 10000);
+        });
 
-        // Get preferences
-        const prefsDoc = await getDoc(doc(db, 'userPreferences', user.uid));
-        if (prefsDoc.exists()) {
-          const prefs = prefsDoc.data() as UserPreferencesType;
-          setPhoneNumber(prefs.phoneNumber || '');
-          setSmsEnabled(prefs.smsReminders || false);
-          setEmailEnabled(prefs.emailReminders ?? true);
-          setDefaultView(prefs.defaultView || 'today');
-          setReminderTime(prefs.reminderTime || 10);
-          setPushEnabled(prefs.pushReminders || false);
-          // Convert serialized subscription back to PushSubscription if it exists
-          if (prefs.pushSubscription) {
-            const registration = await navigator.serviceWorker.ready;
-            const existingSub = await registration.pushManager.getSubscription();
-            setSubscription(existingSub);
-          } else {
-            setSubscription(null);
+        const loadingPromise = (async () => {
+          // Get premium status
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const isPremium = userDoc.data()?.isPremium || false;
+          setIsPremiumUser(isPremium);
+
+          // Get preferences
+          const prefsDoc = await getDoc(doc(db, 'userPreferences', user.uid));
+          if (prefsDoc.exists()) {
+            const prefs = prefsDoc.data() as UserPreferencesType;
+            setPhoneNumber(prefs.phoneNumber || '');
+            setSmsEnabled(prefs.smsReminders || false);
+            setEmailEnabled(prefs.emailReminders ?? true);
+            setDefaultView(prefs.defaultView || 'today');
+            setReminderTime(prefs.reminderTime || 10);
+            setPushEnabled(prefs.pushReminders || false);
           }
-        }
+        })();
+
+        await Promise.race([loadingPromise, timeoutPromise]);
       } catch (err) {
         console.error('Error loading preferences:', err);
-        setError('Failed to load preferences');
+        setError(err instanceof Error ? err.message : 'Failed to load preferences');
       } finally {
         setLoading(false);
       }
@@ -190,37 +194,60 @@ const UserPreferences = () => {
 
   const setupPushNotifications = useCallback(async () => {
     try {
-      // Request notification permission
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        throw new Error('Push notifications are not supported by your browser');
+      }
+
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         throw new Error('Notification permission denied');
       }
 
-      // Register service worker
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      
-      // Get push subscription
-      const existingSubscription = await registration.pushManager.getSubscription();
-      
-      if (existingSubscription) {
-        setSubscription(existingSubscription);
-        setPushEnabled(true);
-        return existingSubscription;
+      // Register service worker with error handling
+      let registration;
+      try {
+        registration = await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.ready; // Wait for SW to be ready
+      } catch (err) {
+        console.error('Service Worker registration failed:', err);
+        throw new Error('Failed to register service worker');
       }
 
-      // Create new subscription
-      const publicVapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      const newSubscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: publicVapidKey
-      });
+      // Get existing subscription first
+      try {
+        const existingSub = await registration.pushManager.getSubscription();
+        if (existingSub) {
+          setSubscription(existingSub);
+          setPushEnabled(true);
+          return existingSub;
+        }
+      } catch (err) {
+        console.error('Error checking existing subscription:', err);
+      }
 
-      setSubscription(newSubscription);
-      setPushEnabled(true);
-      return newSubscription;
+      // Create new subscription with error handling
+      const publicVapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!publicVapidKey) {
+        throw new Error('VAPID key not configured');
+      }
+
+      try {
+        const newSubscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: publicVapidKey
+        });
+
+        setSubscription(newSubscription);
+        setPushEnabled(true);
+        return newSubscription;
+      } catch (err) {
+        console.error('Push subscription failed:', err);
+        throw new Error('Failed to subscribe to push notifications');
+      }
     } catch (error) {
-      console.error('Error setting up push notifications:', error);
-      setError('Failed to enable push notifications');
+      console.error('Error in setupPushNotifications:', error);
+      setError(error instanceof Error ? error.message : 'Failed to enable push notifications');
+      setPushEnabled(false);
       return null;
     }
   }, []);
