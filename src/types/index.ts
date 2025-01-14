@@ -47,6 +47,55 @@ export interface UserPreferences {
   reminderTime: number;
   email: string;
   defaultView: 'today' | 'schedule';
+  hasCompletedTour?: boolean;
+}
+
+export interface SuggestedTask extends Omit<Task, 'id'> {
+  confidence: number
+  category: string
+}
+
+export interface TaskDetailPopupProps {
+  task: Task
+  onClose: () => void
+  theme: string
+  isEditMode: boolean
+  onModify: () => void
+  onPriorityToggle: () => void
+  onDelete: () => void
+}
+
+
+export interface SuggestedTaskCardProps {
+  suggestion: SuggestedTask
+  theme: string
+  onAccept: (task: Partial<Task>) => void
+  existingTasks: Task[]
+  onRemove: () => void
+  user: User | null
+  setTomorrowTasks: (tasks: Task[] | ((prevTasks: Task[]) => Task[])) => void
+  setPlannedHours: (hours: number | ((prev: number) => number)) => void
+}
+
+export interface PushSubscriptionJSON {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
+export interface UserPreferences {
+  userId: string;
+  phoneNumber: string | null;
+  smsReminders: boolean;
+  emailReminders: boolean;
+  pushReminders: boolean;
+  pushSubscription: SerializedPushSubscription | null;
+  reminderTime: number;
+  email: string;
+  defaultView: 'today' | 'schedule';
+  hasCompletedTour?: boolean;
 }
 
 export interface SuggestedTask extends Omit<Task, 'id'> {

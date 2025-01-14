@@ -24,10 +24,10 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { User } from 'firebase/auth'
 import Link from 'next/link'
-import { Task, HistoricalTask, UserPreferences, SuggestedTask, //TaskDetailPopupProps, SuggestedTaskCardProps 
-  } from '@/types'
+import { Task, HistoricalTask, UserPreferences, SuggestedTask } from '@/types'
 import { Toast } from '@/components/Toast'
 import AITaskSuggestions from '../components/AITaskSuggestions'
+import { Tour } from '@/components/Tour'
 
 
 
@@ -262,6 +262,9 @@ export default function DailyTaskManager() {
     type: 'success' | 'error' | 'info';
   } | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [hasSeenTour, setHasSeenTour] = useState(false)
+  const [showTour, setShowTour] = useState(false)
+  const [tourStep, setTourStep] = useState(0)
 
   const getCurrentTasks = useCallback(() => {
     return showTomorrow ? tomorrowTasks : todayTasks;
@@ -535,6 +538,43 @@ export default function DailyTaskManager() {
   
     loadPreferences();
   }, [user])
+
+  useEffect(() => {
+    if (user && !hasSeenTour) {
+      const checkTourStatus = async () => {
+        try {
+          const tourDoc = await getDoc(doc(db, 'userPreferences', user.uid))
+          const hasCompletedTour = tourDoc.data()?.hasCompletedTour
+          
+          if (!hasCompletedTour) {
+            setShowTour(true)
+            // Ensure we're on Today view when starting tour
+            setShowTomorrow(false)
+            setShowFullSchedule(false)
+          }
+        } catch (error) {
+          console.error('Error checking tour status:', error)
+        }
+      }
+      
+      checkTourStatus()
+    }
+  }, [user, hasSeenTour])
+
+  const handleTourComplete = async () => {
+    setShowTour(false)
+    setHasSeenTour(true)
+    
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'userPreferences', user.uid), {
+          hasCompletedTour: true,
+        })
+      } catch (error) {
+        console.error('Error saving tour status:', error)
+      }
+    }
+  }
 
   const handleMidnightTransition = async () => {
     if (!user) return
@@ -1002,9 +1042,87 @@ export default function DailyTaskManager() {
     await addDoc(collection(db, 'taskHistory'), historicalTask)
   }
 
+  // Add this function to handle tour steps
+  const getTourSteps = () => [
+    // Welcome step
+    {
+      element: '.tour-header',
+      title: 'Welcome to Simple!',
+      description: 'Let me show you around and help you get started with organizing your day.'
+    },
+    // Today/Tomorrow toggle
+    {
+      element: '.tour-toggle',
+      title: 'Switch Views',
+      description: 'Toggle between Today and Tomorrow to manage your current tasks or plan ahead.'
+    },
+    // Stats overview
+    {
+      element: '.tour-stats',
+      title: 'Track Your Progress',
+      description: 'Monitor your daily progress, completed tasks, and priorities at a glance.'
+    },
+    // Timeline - Today view
+    {
+      element: '.tour-timeline',
+      title: 'Your Schedule',
+      description: 'This is your daily timeline. Click any hour to add a new task.'
+    },
+    // Task interaction
+    {
+      element: '.tour-task',
+      title: 'Task Management',
+      description: 'Click on a task to view details. You can mark tasks as complete, set priorities, or modify them.'
+    },
+    // Combine hours feature
+    {
+      element: '.tour-combine',
+      title: 'Combine Hours',
+      description: 'Create longer tasks by combining multiple hours together.'
+    },
+    // Tomorrow planning
+    {
+      element: '.tour-tomorrow',
+      title: 'Plan Tomorrow',
+      description: 'Switch to Tomorrow view to plan ahead and get AI-powered task suggestions.'
+    },
+    // Theme toggle
+    {
+      element: '.tour-theme',
+      title: 'Customize Your View',
+      description: 'Switch between light and dark mode for your preferred viewing experience.'
+    }
+  ]
+
+  // Add tour step navigation functions
+  const handleNextStep = () => {
+    const steps = getTourSteps()
+    if (tourStep < steps.length - 1) {
+      setTourStep(prev => prev + 1)
+      
+      // Handle special cases when moving to next step
+      if (steps[tourStep + 1].element === '.tour-tomorrow') {
+        setShowTomorrow(true)
+      }
+    } else {
+      handleTourComplete()
+    }
+  }
+
+  const handlePrevStep = () => {
+    if (tourStep > 0) {
+      setTourStep(prev => prev - 1)
+      
+      // Handle special cases when moving to previous step
+      if (getTourSteps()[tourStep - 1].element === '.tour-timeline') {
+        setShowTomorrow(false)
+      }
+    }
+  }
+
   return (
     <div className={`h-screen overflow-auto ${theme === 'dark' 
-      ? 'bg-[#0B1120] text-white' // Deep space blue background
+      ? 'bg-[#0B1120] text-white'
       : 'bg-[#F0F4FF] text-slate-900'
     }`}>
       {/* Add Toast component near the top of your JSX */}
@@ -1022,7 +1140,7 @@ export default function DailyTaskManager() {
       <div className="relative h-full p-4 sm:p-8">
         <div className="max-w-4xl mx-auto space-y-8">
           {/* Header with gaming aesthetic */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8 tour-header">
             <div className="space-y-1">
               <h1 className={`text-3xl sm:text-4xl font-bold tracking-tight
                 ${theme === 'dark'
@@ -1224,9 +1342,9 @@ export default function DailyTaskManager() {
               : 'bg-white/50 border-slate-200'
             }`}
           >
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 tour-stats">
               {/* Today/Tomorrow Toggle - Updated Design */}
-              <div className="col-span-2 flex justify-center mb-2">
+              <div className="col-span-2 flex justify-center mb-2 tour-toggle">
                 <div className={`
                   flex gap-2 p-1.5 rounded-2xl relative
                   ${theme === 'dark' 
@@ -1621,7 +1739,7 @@ export default function DailyTaskManager() {
             )}
 
             {/* Your existing tasks grid */}
-            <div className="space-y-2">
+            <div className="space-y-2 tour-timeline">
               {getVisibleHours().map((hour) => {
                 const task = getTaskAtHour(hour)
                 const isCurrentHour = !showTomorrow && hour === currentHour
@@ -1972,7 +2090,7 @@ export default function DailyTaskManager() {
 
       {/* Combined Edit Mode Controls - Remove exit button */}
       {!showTomorrow && showFullSchedule && (
-        <div className="fixed bottom-8 right-8 flex gap-4 z-50">
+        <div className="fixed bottom-8 right-8 flex gap-4 z-50 tour-combine">
           {isCombineMode ? (
             <>
               <button
@@ -2031,7 +2149,7 @@ export default function DailyTaskManager() {
 
       {/* Tomorrow's View Combine Button */}
       {showTomorrow && (
-        <div className="fixed bottom-8 right-8 flex gap-4 z-50">
+        <div className="fixed bottom-8 right-8 flex gap-4 z-50 tour-combine">
           <button
             onClick={() => {
               if (isCombineMode) {
@@ -2111,9 +2229,16 @@ export default function DailyTaskManager() {
         />
       )}
 
-      
-
-     
+      {showTour && (
+        <Tour
+          steps={getTourSteps()}
+          currentStep={tourStep}
+          onNext={handleNextStep}
+          onPrev={handlePrevStep}
+          onComplete={handleTourComplete}
+          theme={theme || 'light'}
+        />
+      )}
     </div>
   )
 }
