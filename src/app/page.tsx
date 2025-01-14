@@ -279,14 +279,15 @@ export default function DailyTaskManager() {
   }
 
   const checkAndSendReminder = async (task: Task) => {
-    console.log('Checking reminder for task:', task.activity);
     
     if (!user?.email || !task.id) {
       console.log('Skipping reminder - no user email or task id');
       return false;
     }
-
+    
     try {
+      
+      console.log('Checking reminder for tasksss:', task.activity);
       // Get user preferences
       const prefsDoc = await getDoc(doc(db, 'userPreferences', user.uid));
       const userPrefs = prefsDoc.data() as UserPreferences;
@@ -309,18 +310,20 @@ export default function DailyTaskManager() {
       taskDate.setMinutes(0);
       taskDate.setSeconds(0);
       
-      const reminderTime = new Date(taskDate.getTime() - userPrefs.reminderTime * 60000);
+      const reminderTime = new Date(taskDate.getTime() - (userPrefs.reminderTime || 10) * 60000);
       // const reminderTime = new Date(taskDate.getTime() - 15 * 60000);
       const now = new Date();
 
       const isWithinOneMinute = Math.abs(reminderTime.getTime() - now.getTime()) <= 60000;
       const isSameDay = taskDate.toDateString() === now.toDateString();
 
+      console.log('isWithinOneMinute and isSameDay:', isWithinOneMinute, isSameDay);
       if (isWithinOneMinute && isSameDay) {
         const reminderMessage = `Task Reminder: ${task.activity} starts in 10 minutes at ${formatTime(task.startTime)}. ${task.description ? `\nDetails: ${task.description}` : ''}\n\nView task: https://simple-r.vercel.app/`;
 
         // Send email if enabled
         if (userPrefs.emailReminders) {
+          console.log('Sending email reminder for task:', task.activity);
           await fetch('/api/send-reminder', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -334,6 +337,7 @@ export default function DailyTaskManager() {
 
         // Send SMS if enabled and phone number exists
         if (userPrefs.smsReminders && userPrefs.phoneNumber) {
+          console.log('Sending SMS reminder for task:', task.activity);
           await fetch('/api/send-sms', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -347,6 +351,7 @@ export default function DailyTaskManager() {
 
         // Send push notification
         try {
+          console.log('Sending push notification for task:', task.activity);
           await fetch('/api/push/send', {
             method: 'POST',
             headers: {
