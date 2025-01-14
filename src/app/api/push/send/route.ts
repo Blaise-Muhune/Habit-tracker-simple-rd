@@ -6,7 +6,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 const vapidKeys = {
   publicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
   privateKey: process.env.VAPID_PRIVATE_KEY!,
-  subject: 'mailto:your-actual-email@domain.com'
+  subject: 'mailto:'+ process.env.NEXT_PUBLIC_VAPID_EMAIL!
 };
 
 webpush.setVapidDetails(
@@ -18,7 +18,7 @@ webpush.setVapidDetails(
 export async function POST(request: Request) {
   try {
     const { userId, message, title } = await request.json();
-
+    console.log('userId', userId);
     // Get user preferences
     const prefsDoc = await getDoc(doc(db, 'userPreferences', userId));
     if (!prefsDoc.exists()) {
