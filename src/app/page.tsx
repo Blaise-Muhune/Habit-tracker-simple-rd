@@ -1038,7 +1038,7 @@ export default function DailyTaskManager() {
             </div>
 
             {/* User Authentication Section with Dropdown */}
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex justify-end items-center gap-2 sm:gap-3">
               {user ? (
                 <div className="relative group">
                   <div className={`flex items-center gap-2 px-2 sm:px-3 py-1 rounded-full cursor-pointer
@@ -1064,7 +1064,7 @@ export default function DailyTaskManager() {
                     )}
                   </div>
 
-                  {/* Updated Dropdown Menu - Added right-0 sm:right-auto positioning */}
+                  {/* Updated Dropdown Menu - Added button-like styling */}
                   <div className={`
                     absolute left-0 sm:right-auto mt-2 w-48 py-2 rounded-xl shadow-lg 
                     opacity-0 invisible group-hover:opacity-100 group-hover:visible 
@@ -1080,19 +1080,18 @@ export default function DailyTaskManager() {
                     {isPremiumUser && (
                       <Link
                         href="/analytics"
-                        className={`block px-4 py-2 text-sm
+                        className={`block w-full px-4 py-2 text-sm transition-colors
                           ${theme === 'dark'
-                            ? 'text-slate-300 hover:bg-slate-700'
-                            : 'text-slate-700 hover:bg-slate-50'
+                            ? 'text-slate-300 hover:bg-slate-700/70 active:bg-slate-600'
+                            : 'text-slate-700 hover:bg-slate-50 active:bg-slate-100'
                           }
+                          hover:scale-[0.98] transform duration-100
+                          mx-auto my-0.5 rounded-lg
                         `}
                       >
                         <div className="flex items-center gap-2">
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path 
-                              strokeLinecap="round" 
-                              strokeLinejoin="round" 
-                              strokeWidth={2} 
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                               d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
                             />
                           </svg>
@@ -1101,22 +1100,21 @@ export default function DailyTaskManager() {
                       </Link>
                     )}
 
-                    {/* Premium/Account link */}
+                    {/* Premium/Account link - Updated styling */}
                     <Link
                       href="/premium"
-                      className={`block px-4 py-2 text-sm
+                      className={`block w-full px-4 py-2 text-sm transition-colors
                         ${theme === 'dark'
-                          ? 'text-slate-300 hover:bg-slate-700'
-                          : 'text-slate-700 hover:bg-slate-50'
+                          ? 'text-slate-300 hover:bg-slate-700/70 active:bg-slate-600'
+                          : 'text-slate-700 hover:bg-slate-50 active:bg-slate-100'
                         }
+                        hover:scale-[0.98] transform duration-100
+                        mx-auto my-0.5 rounded-lg
                       `}
                     >
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                             d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
                           />
                         </svg>
@@ -1124,28 +1122,24 @@ export default function DailyTaskManager() {
                       </div>
                     </Link>
 
-                    {/* Add Preferences Link */}
+                    {/* Preferences Link - Updated styling */}
                     <Link
                       href="/preferences"
-                      className={`block px-4 py-2 text-sm
+                      className={`block w-full px-4 py-2 text-sm transition-colors
                         ${theme === 'dark'
-                          ? 'text-slate-300 hover:bg-slate-700'
-                          : 'text-slate-700 hover:bg-slate-50'
+                          ? 'text-slate-300 hover:bg-slate-700/70 active:bg-slate-600'
+                          : 'text-slate-700 hover:bg-slate-50 active:bg-slate-100'
                         }
+                        hover:scale-[0.98] transform duration-100
+                        mx-auto my-0.5 rounded-lg
                       `}
                     >
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                             d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
                           />
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                             d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
                           />
                         </svg>
@@ -1153,22 +1147,21 @@ export default function DailyTaskManager() {
                       </div>
                     </Link>
 
-                    {/* Sign out button */}
+                    {/* Feedback Link - Updated styling */}
                     <Link
                       href="/feedback"
-                      className={`block px-4 py-2 text-sm
+                      className={`block w-full px-4 py-2 text-sm transition-colors
                         ${theme === 'dark'
-                          ? 'text-slate-300 hover:bg-slate-700'
-                          : 'text-slate-700 hover:bg-slate-50'
+                          ? 'text-slate-300 hover:bg-slate-700/70 active:bg-slate-600'
+                          : 'text-slate-700 hover:bg-slate-50 active:bg-slate-100'
                         }
+                        hover:scale-[0.98] transform duration-100
+                        mx-auto my-0.5 rounded-lg
                       `}
                     >
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                             d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
                           />
                         </svg>
@@ -1176,21 +1169,21 @@ export default function DailyTaskManager() {
                       </div>
                     </Link>
 
+                    {/* Sign out button - Updated styling */}
                     <button
                       onClick={logout}
-                      className={`block w-full text-left px-4 py-2 text-sm
+                      className={`w-full px-4 py-2 text-sm transition-colors text-left
                         ${theme === 'dark'
-                          ? 'text-slate-300 hover:bg-slate-700'
-                          : 'text-slate-700 hover:bg-slate-50'
+                          ? 'text-slate-300 hover:bg-slate-700/70 active:bg-slate-600'
+                          : 'text-slate-700 hover:bg-slate-50 active:bg-slate-100'
                         }
+                        hover:scale-[0.98] transform duration-100
+                        mx-auto my-0.5 rounded-lg
                       `}
                     >
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                             d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
                           />
                         </svg>
