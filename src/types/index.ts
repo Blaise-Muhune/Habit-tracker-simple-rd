@@ -26,6 +26,7 @@ export interface HistoricalTask extends Task {
   completionTime?: number
   dueDate?: string
   completedDate?: string
+  recurring?: boolean
 }
 
 interface SerializedPushSubscription {
