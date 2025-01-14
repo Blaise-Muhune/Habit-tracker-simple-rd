@@ -845,7 +845,8 @@ export default function DailyTaskManager() {
 
   const getTaskAtHour = (hour: number) => {
     return getCurrentTasks().find(task => 
-      hour >= task.startTime && hour < (task.startTime + task.duration)
+      // Check if the hour is either the start time or within the task duration
+      (hour >= task.startTime && hour < (task.startTime + task.duration))
     )
   }
 
@@ -1752,7 +1753,10 @@ export default function DailyTaskManager() {
                       group relative rounded-xl border-2 backdrop-blur-sm
                       transition-all duration-300 hover:scale-[1.02] cursor-pointer
                       ${task.completed ? 'opacity-50' : isPastHour ? 'opacity-50' : ''}
-                      ${isCurrentHour ? 'ring-2 ring-offset-2 ring-red-500 ring-offset-black' : ''}
+                      ${(!showTomorrow && (
+                        isCurrentHour || 
+                        (currentHour >= task.startTime && currentHour < (task.startTime + task.duration))
+                      )) ? 'ring-2 ring-offset-2 ring-red-500 ring-offset-black' : ''}
                       ${task.isPriority
                         ? theme === 'dark'
                           ? 'border-blue-500/50 bg-blue-950/50'
@@ -1906,6 +1910,19 @@ export default function DailyTaskManager() {
                         </div>
                       )}
                     </div>
+
+                    {/* Add a "Current" indicator if this task includes the current hour */}
+                    {!showTomorrow && currentHour >= task.startTime && currentHour < (task.startTime + task.duration) && (
+                      <div className={`
+                        absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium
+                        ${theme === 'dark' 
+                          ? 'bg-red-500/20 text-red-400' 
+                          : 'bg-red-50 text-red-600'
+                        }
+                      `}>
+                        Current
+                      </div>
+                    )}
                   </motion.div>
                 ) : (
                   <motion.div
