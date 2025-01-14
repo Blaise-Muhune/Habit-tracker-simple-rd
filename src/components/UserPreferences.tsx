@@ -437,8 +437,7 @@ const UserPreferences = () => {
                     ? 'bg-slate-800 border-slate-600 text-white focus:border-violet-500'
                     : 'bg-white border-gray-200 text-gray-900 focus:border-violet-500'
                   } focus:ring-1 focus:ring-violet-500 focus:outline-none`}
-              > 
-                <option disabled selected>Please select a time</option>
+              >
                 <option value="5">5 minutes before</option>
                 <option value="10">10 minutes before</option>
                 <option value="15">15 minutes before</option>
