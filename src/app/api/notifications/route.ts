@@ -1,5 +1,6 @@
 import { db } from '@/lib/firebase'; // Import regular Firebase client
 import { Task } from '@/types';
+import { log } from 'console';
 import { collection, query, where, getDocs, updateDoc, Timestamp } from 'firebase/firestore';
 import { NextResponse } from 'next/server';
 import webpush from 'web-push';
@@ -131,6 +132,7 @@ async function sendPushNotification(task: Task, pushSubscription: webpush.PushSu
 
 export async function GET(req: Request) {
 
+  console.log(req.body,'GET request received');
 
   // Move your notification logic here from the POST handler
   const now = new Date();
