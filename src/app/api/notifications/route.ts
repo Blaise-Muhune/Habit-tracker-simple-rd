@@ -246,7 +246,7 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(_req: Request) {
   // For manual triggers, perhaps from admin dashboard
   // You might want to add authentication here
   const now = new Date();
