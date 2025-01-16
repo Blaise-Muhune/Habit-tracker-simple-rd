@@ -1,6 +1,5 @@
 import { db } from '@/lib/firebase'; // Import regular Firebase client
 import { Task } from '@/types';
-import { log } from 'console';
 import { collection, query, where, getDocs, updateDoc, Timestamp } from 'firebase/firestore';
 import { NextResponse } from 'next/server';
 import webpush from 'web-push';
