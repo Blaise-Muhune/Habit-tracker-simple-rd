@@ -1,4 +1,5 @@
 import { db } from '@/lib/firebase'; // Import regular Firebase client
+import { Task } from '@/types';
 import { collection, query, where, getDocs, updateDoc, Timestamp } from 'firebase/firestore';
 import { NextResponse } from 'next/server';
 import webpush from 'web-push';
@@ -16,7 +17,7 @@ webpush.setVapidDetails(
   vapidKeys.privateKey
 );
 
-async function sendEmailNotification(task: any, email: string) {
+async function sendEmailNotification(task: Task, email: string) {
   try {
     // Call your email endpoint
     const response = await fetch(new URL('/api/send-reminder', process.env.NEXT_PUBLIC_APP_URL!).toString(), {
@@ -51,7 +52,7 @@ async function sendEmailNotification(task: any, email: string) {
   }
 }
 
-async function sendSMSNotification(task: any, phoneNumber: string) {
+async function sendSMSNotification(task: Task, phoneNumber: string) {
   try {
     // Call your SMS endpoint
     const response = await fetch(new URL('/api/send-sms', process.env.NEXT_PUBLIC_APP_URL!).toString(), {
@@ -86,7 +87,7 @@ async function sendSMSNotification(task: any, phoneNumber: string) {
   }
 }
 
-async function sendPushNotification(task: any, pushSubscription: any) {
+async function sendPushNotification(task: Task, pushSubscription: webpush.PushSubscription) {
   try {
     await webpush.sendNotification(
       pushSubscription,
@@ -184,14 +185,14 @@ export async function POST() {
         
         if (userPrefsData.smsReminders && userPrefsData.phoneNumber) {
           notificationPromises.push(
-            sendSMSNotification(task, userPrefsData.phoneNumber)
+            sendSMSNotification(task as Task, userPrefsData.phoneNumber)
           );
         }
 
         // Add push notification if enabled
         if (userPrefsData.pushReminders && userPrefsData.pushSubscription) {
           notificationPromises.push(
-            sendPushNotification(task, userPrefsData.pushSubscription)
+            sendPushNotification(task as Task, userPrefsData.pushSubscription)
           );
         }
 
@@ -204,9 +205,9 @@ export async function POST() {
         );
 
         // Update task and potentially user preferences
-        const updates: any = { 
+        const updates: Partial<Task> = { 
           reminderSent: true,
-          lastUpdated: Timestamp.now()
+          lastUpdated: Timestamp.now().toDate().getTime()
         };
 
         await updateDoc(taskDoc.ref, updates);

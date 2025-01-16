@@ -583,6 +583,7 @@ export default function DailyTaskManager() {
           limit(10)
         ))
       ]);
+      console.log('notificationHistorySnapshot', notificationHistorySnapshot)
 
       // Process tasks with notification status
       const tasks = tasksSnapshot.docs.map(doc => ({
@@ -608,29 +609,6 @@ export default function DailyTaskManager() {
       loadSuggestions()
     }
   }, [showTomorrow, user])
-
-  const generateSuggestions = async (historicalTasks: Task[]): Promise<SuggestedTask[]> => {
-    if (!isPremiumUser) {
-      return [];
-    }
-  
-    try {
-      const response = await fetch('/api/generate-suggestions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ historicalTasks }),
-      });
-      
-      if (!response.ok) throw new Error('Failed to generate suggestions');
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Error generating suggestions:', error);
-      return [];
-    }
-  }
 
   const loadSuggestions = useCallback(async () => {
     if (!user) return;

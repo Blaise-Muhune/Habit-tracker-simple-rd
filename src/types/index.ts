@@ -17,6 +17,7 @@ export interface Task {
   createdAt: number
   reminderSent?: boolean
   category?: string
+  lastUpdated?: number
 }
 
 export interface HistoricalTask extends Task {
