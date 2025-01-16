@@ -246,9 +246,10 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(_req: Request) {
+export async function POST(req: Request) {
   // For manual triggers, perhaps from admin dashboard
   // You might want to add authentication here
+  console.log(req);
   const now = new Date();
   const currentMinute = now.getMinutes();
   const currentHour = now.getHours();
