@@ -129,7 +129,15 @@ async function sendPushNotification(task: Task, pushSubscription: webpush.PushSu
   }
 }
 
-export async function POST() {
+export async function GET(req: Request) {
+  // Check if this is a cron job request
+  const isCronJob = req.headers.get('user-agent')?.includes('Vercel Cron');
+  
+  if (!isCronJob) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Move your notification logic here from the POST handler
   const now = new Date();
   const currentMinute = now.getMinutes();
   const currentHour = now.getHours();
@@ -238,8 +246,115 @@ export async function POST() {
   }
 }
 
-export async function GET() {
-  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
+export async function POST(req: Request) {
+  // For manual triggers, perhaps from admin dashboard
+  // You might want to add authentication here
+  const now = new Date();
+  const currentMinute = now.getMinutes();
+  const currentHour = now.getHours();
+
+  try {
+    // Get all tasks for today
+    const tasksRef = collection(db, 'tasks');
+    const q = query(
+      tasksRef,
+      where('reminderSent', '==', false),
+      where('date', '==', now.toISOString().split('T')[0])
+    );
+    
+    const tasksSnapshot = await getDocs(q);
+    const notifications = [];
+
+    for (const taskDoc of tasksSnapshot.docs) {
+      const task = taskDoc.data();
+      const userPrefsRef = collection(db, 'userPreferences');
+      const userPrefsSnap = await getDocs(query(userPrefsRef, where('userId', '==', task.userId)));
+      
+      if (userPrefsSnap.empty) continue;
+      const userPrefsData = userPrefsSnap.docs[0].data();
+
+      // Calculate notification time
+      const taskHour = task.startTime;
+      const reminderMinutes = userPrefsData.reminderTime || 10;
+      
+      let notificationHour = taskHour;
+      let notificationMinute = 0;
+      
+      if (reminderMinutes >= 60) {
+        notificationHour = taskHour - Math.floor(reminderMinutes / 60);
+        notificationMinute = 60 - (reminderMinutes % 60);
+      } else {
+        notificationMinute = 60 - reminderMinutes;
+        if (notificationMinute === 60) {
+          notificationMinute = 0;
+        } else {
+          notificationHour = notificationHour - 1;
+        }
+      }
+
+      // Check if it's time to send notification
+      if (currentHour === notificationHour && currentMinute === notificationMinute) {
+        const notificationPromises = [];
+
+        if (userPrefsData.emailReminders) {
+          notificationPromises.push(
+            sendEmailNotification(task as Task, userPrefsData.email)
+          );
+        }
+        
+        if (userPrefsData.smsReminders && userPrefsData.phoneNumber) {
+          notificationPromises.push(
+            sendSMSNotification(task as Task, userPrefsData.phoneNumber)
+          );
+        }
+
+        // Add push notification if enabled
+        if (userPrefsData.pushReminders && userPrefsData.pushSubscription) {
+          notificationPromises.push(
+            sendPushNotification(task as Task, userPrefsData.pushSubscription)
+          );
+        }
+
+        // Wait for all notifications to be sent
+        const results = await Promise.all(notificationPromises);
+
+        // Check for invalid push subscriptions
+        const invalidPushSubscription = results.find(
+          result => result.type === 'push' && result.error === 'SUBSCRIPTION_INVALID'
+        );
+
+        // Update task and potentially user preferences
+        const updates: Partial<Task> = { 
+          reminderSent: true,
+          lastUpdated: Timestamp.now().toDate().getTime()
+        };
+
+        await updateDoc(taskDoc.ref, updates);
+
+        // If push subscription is invalid, update user preferences
+        if (invalidPushSubscription) {
+          await updateDoc(userPrefsSnap.docs[0].ref, {
+            pushReminders: false,
+            pushSubscription: null
+          });
+        }
+      }
+    }
+    
+    return NextResponse.json({ 
+      success: true, 
+      notificationsSent: notifications.length 
+    });
+  } catch (error) {
+    console.error('Error in notification function:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PUT() {
