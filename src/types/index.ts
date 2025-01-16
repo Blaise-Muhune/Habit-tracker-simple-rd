@@ -36,7 +36,6 @@ export interface PushSubscriptionJSON {
     auth: string;
   };
 }
-
 export interface UserPreferences {
   userId: string;
   phoneNumber: string | null;
@@ -74,4 +73,12 @@ export interface SuggestedTaskCardProps {
   user: User | null
   setTomorrowTasks: (tasks: Task[] | ((prevTasks: Task[]) => Task[])) => void
   setPlannedHours: (hours: number | ((prev: number) => number)) => void
-} 
+}
+
+export interface NotificationHistory {
+  taskId: string;
+  type: 'email' | 'sms';
+  status: 'success' | 'failed';
+  timestamp: number;
+  error?: string;
+}

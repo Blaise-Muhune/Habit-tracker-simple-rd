@@ -1,0 +1,42 @@
+I need help implementing a server-side notification system for a task management app built with Next.js, Firebase, and TypeScript. The current system only works when the browser is open. Here are the requirements:
+
+1. The system should send SMS (via Twilio) and email notifications for task reminders even when users aren't actively using the app.
+
+2. Current tech stack:
+- Next.js 14 (App Router)
+- Firebase (Firestore, Auth)
+- TypeScript
+- Twilio for SMS
+- Nodemailer for email
+- Existing collections: 'tasks', 'users', 'userPreferences'
+
+3. Task structure:
+- Has startTime, duration, date
+- Needs notifications X minutes before (configurable in userPreferences)
+- Users can enable/disable email/SMS notifications
+
+4. Requirements:
+- Must work 24/7 without client interaction
+- Handle different time zones
+- Support retry logic for failed notifications
+- Include rate limiting
+- Track notification history
+- Be cost-efficient
+- Scale well with user growth
+
+5. Constraints:
+- Must use Firebase ecosystem
+- Keep costs minimal
+- Maintain existing user experience
+- Handle errors gracefully
+
+Please provide a step-by-step implementation guide, including:
+- Firebase Cloud Functions setup
+- Database schema changes
+- Backend notification logic
+- Frontend modifications
+- Testing approach
+- Deployment considerations
+- Cost optimization strategies
+
+Focus on production-ready code with proper error handling and logging.

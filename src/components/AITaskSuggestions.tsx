@@ -2,7 +2,7 @@ import { Task, SuggestedTask } from "@/types";
 import { motion, AnimatePresence } from "framer-motion";
 import { User } from 'firebase/auth';
 import SuggestedTaskCard from './SuggestedTaskCard';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface AITaskSuggestionsProps {
   theme: string;
@@ -34,7 +34,45 @@ export default function AITaskSuggestions({
     user
   }: AITaskSuggestionsProps) {
     const [showAllSuggestions, setShowAllSuggestions] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [isInitialLoading, setIsInitialLoading] = useState(true);
     const INITIAL_SUGGESTIONS_COUNT = 4;
+
+    useEffect(() => {
+      const fetchSuggestions = async () => {
+        setIsInitialLoading(true);
+        try {
+          // Debug log to verify data
+          console.log('Sending request with user:', user?.uid);
+
+          const response = await fetch('/api/generate-suggestions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              historicalTasks: getCurrentTasks() || [],
+              userId: user?.uid
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error('API Error:', errorData);
+            return;
+          }
+
+          const data = await response.json();
+          setSuggestions(data);
+        } catch (error) {
+          console.error('Failed to load suggestions:', error);
+        } finally {
+          setIsInitialLoading(false);
+        }
+      };
+
+      fetchSuggestions();
+    }, [user?.uid, getCurrentTasks, setSuggestions, user]);
 
     const visibleSuggestions = showAllSuggestions 
       ? suggestions 
@@ -72,6 +110,15 @@ export default function AITaskSuggestions({
       } catch (error) {
         console.error('Failed to load suggestions:', error);
       }
+    };
+
+    const handleShowAllSuggestions = async () => {
+      if (!showAllSuggestions) {
+        setIsLoadingMore(true);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setIsLoadingMore(false);
+      }
+      setShowAllSuggestions(!showAllSuggestions);
     };
 
     return (
@@ -170,7 +217,43 @@ export default function AITaskSuggestions({
   
                 {/* Suggestions List */}
                 <div className="p-3 space-y-2">
-                  {suggestions.length > 0 ? (
+                  {isInitialLoading ? (
+                    // Loading skeleton
+                    <div className="space-y-2">
+                      {[...Array(3)].map((_, index) => (
+                        <div 
+                          key={index}
+                          className={`
+                            p-2.5 rounded-lg border animate-pulse
+                            ${theme === 'dark' 
+                              ? 'bg-slate-800/60 border-slate-700/50'
+                              : 'bg-white/80 border-slate-200/50'}
+                          `}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className={`
+                              w-16 h-6 rounded-md
+                              ${theme === 'dark' ? 'bg-slate-700/50' : 'bg-slate-100'}
+                            `}/>
+                            <div className={`
+                              flex-1 h-6 rounded-md
+                              ${theme === 'dark' ? 'bg-slate-700/50' : 'bg-slate-100'}
+                            `}/>
+                            <div className="flex gap-1">
+                              <div className={`
+                                w-8 h-8 rounded-lg
+                                ${theme === 'dark' ? 'bg-slate-700/50' : 'bg-slate-100'}
+                              `}/>
+                              <div className={`
+                                w-8 h-8 rounded-lg
+                                ${theme === 'dark' ? 'bg-slate-700/50' : 'bg-slate-100'}
+                              `}/>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : suggestions.length > 0 ? (
                     <>
                       {visibleSuggestions.map((suggestion, index) => (
                         <SuggestedTaskCard
@@ -191,7 +274,8 @@ export default function AITaskSuggestions({
                       {/* View All Button */}
                       {suggestions.length > INITIAL_SUGGESTIONS_COUNT && (
                         <button
-                          onClick={() => setShowAllSuggestions(!showAllSuggestions)}
+                          onClick={handleShowAllSuggestions}
+                          disabled={isLoadingMore}
                           className={`
                             w-full py-2 px-3 mt-2 rounded-lg text-sm transition-colors
                             ${theme === 'dark'
@@ -199,7 +283,16 @@ export default function AITaskSuggestions({
                               : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}
                           `}
                         >
-                          {showAllSuggestions ? (
+                          {isLoadingMore ? (
+                            <span className="flex items-center justify-center gap-1">
+                              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                                />
+                              </svg>
+                              Loading...
+                            </span>
+                          ) : showAllSuggestions ? (
                             <span className="flex items-center justify-center gap-1">
                               Show Less
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

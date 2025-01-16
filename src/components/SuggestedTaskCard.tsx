@@ -2,6 +2,7 @@ import { Task, SuggestedTask } from '../types'
 import { User } from 'firebase/auth'
 import { db } from '@/lib/firebase'
 import { query, collection, where, getDocs, deleteDoc } from 'firebase/firestore'
+import { useState } from 'react'
 
 interface SuggestedTaskCardProps {
   suggestion: SuggestedTask
@@ -18,6 +19,8 @@ export default function SuggestedTaskCard({
   onRemove,
   user,
 }: SuggestedTaskCardProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  
   const formatTime = (hour: number) => {
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const formattedHour = hour % 12 || 12;
@@ -49,27 +52,37 @@ export default function SuggestedTaskCard({
   }
 
   const handleAccept = async () => {
-    const newTask: Partial<Task> = {
-      activity: suggestion.activity,
-      startTime: suggestion.startTime,
-      duration: suggestion.duration,
-      completed: false,
-      isPriority: false,
-      date: new Date().toISOString().split('T')[0],
-      createdAt: Date.now(),
-      userId: user?.uid,
-      ...(suggestion.description && { description: suggestion.description }),
-      ...(suggestion.category && { category: suggestion.category }),
-    }
+    setIsLoading(true);
+    try {
+      const newTask: Partial<Task> = {
+        activity: suggestion.activity,
+        startTime: suggestion.startTime,
+        duration: suggestion.duration,
+        completed: false,
+        isPriority: false,
+        date: new Date().toISOString().split('T')[0],
+        createdAt: Date.now(),
+        userId: user?.uid,
+        ...(suggestion.description && { description: suggestion.description }),
+        ...(suggestion.category && { category: suggestion.category }),
+      }
 
-    await deleteFromFirebase()
-    onAccept(newTask)
-    onRemove()
+      await deleteFromFirebase()
+      onAccept(newTask)
+      onRemove()
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleRemove = async () => {
-    await deleteFromFirebase()
-    onRemove()
+    setIsLoading(true)
+    try {
+      await deleteFromFirebase()
+      onRemove()
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -95,29 +108,49 @@ export default function SuggestedTaskCard({
         <div className="flex gap-1 shrink-0">
           <button
             onClick={handleAccept}
+            disabled={isLoading}
             className={`
               p-1.5 rounded-lg transition-colors
               ${theme === 'dark'
                 ? 'bg-violet-500/10 hover:bg-violet-500/20 text-violet-400'
                 : 'bg-violet-50 hover:bg-violet-100 text-violet-600'}
+              ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
             `}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+            {isLoading ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
           </button>
           <button
             onClick={handleRemove}
+            disabled={isLoading}
             className={`
               p-1.5 rounded-lg transition-colors
               ${theme === 'dark'
                 ? 'bg-slate-700/50 hover:bg-slate-700 text-slate-400'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}
+              ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
             `}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            {isLoading ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
           </button>
         </div>
       </div>

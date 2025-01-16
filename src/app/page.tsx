@@ -28,6 +28,7 @@ import { Task, HistoricalTask, UserPreferences, SuggestedTask } from '@/types'
 import { Toast } from '@/components/Toast'
 import AITaskSuggestions from '../components/AITaskSuggestions'
 import { Tour } from '@/components/Tour'
+import { useRouter } from 'next/navigation'
 
 
 
@@ -265,6 +266,10 @@ export default function DailyTaskManager() {
   const [hasSeenTour, setHasSeenTour] = useState(false)
   const [showTour, setShowTour] = useState(false)
   const [tourStep, setTourStep] = useState(0)
+  // Add this state near your other state declarations
+  const [isNavigating, setIsNavigating] = useState(false)
+
+  const router = useRouter()
 
   const getCurrentTasks = useCallback(() => {
     return showTomorrow ? tomorrowTasks : todayTasks;
@@ -279,105 +284,20 @@ export default function DailyTaskManager() {
   }
 
   const checkAndSendReminder = async (task: Task) => {
-    
     if (!user?.email || !task.id) {
-      console.log('Skipping reminder - no user email or task id');
       return false;
     }
     
     try {
-      
-      console.log('Checking reminder for tasksss:', task.activity);
-      // Get user preferences
-      const prefsDoc = await getDoc(doc(db, 'userPreferences', user.uid));
-      const userPrefs = prefsDoc.data() as UserPreferences;
-
-      // Check Firebase for current reminder status
-      const taskDoc = await getDoc(doc(db, 'tasks', task.id));
-      if (!taskDoc.exists()) {
-        console.log('Task no longer exists');
-        return false;
-      }
-      
-      if (taskDoc.data().reminderSent) {
-        console.log('Reminder already sent according to Firebase');
-        return false;
-      }
-
-      const [year, month, day] = task.date.split('-').map(num => parseInt(num));
-      const taskDate = new Date(year, month - 1, day);
-      taskDate.setHours(task.startTime);
-      taskDate.setMinutes(0);
-      taskDate.setSeconds(0);
-      
-      const reminderTime = new Date(taskDate.getTime() - (userPrefs.reminderTime || 10) * 60000);
-      // const reminderTime = new Date(taskDate.getTime() - 15 * 60000);
-      const now = new Date();
-
-      const isWithinOneMinute = Math.abs(reminderTime.getTime() - now.getTime()) <= 60000;
-      const isSameDay = taskDate.toDateString() === now.toDateString();
-
-      console.log('isWithinOneMinute and isSameDay:', isWithinOneMinute, isSameDay);
-      if (isWithinOneMinute && isSameDay) {
-        const reminderMessage = `Task Reminder: ${task.activity} starts in 10 minutes at ${formatTime(task.startTime)}. ${task.description ? `\nDetails: ${task.description}` : ''}\n\nView task: https://simple-r.vercel.app/`;
-
-        // Send email if enabled
-        if (userPrefs.emailReminders) {
-          console.log('Sending email reminder for task:', task.activity);
-          await fetch('/api/send-reminder', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: user.email,
-              subject: `Reminder: ${task.activity} in 10 minutes`,
-              text: `Hi ${user.displayName || 'there'},\n\n${reminderMessage}`
-            }),
-          });
-        }
-
-        // Send SMS if enabled and phone number exists
-        if (userPrefs.smsReminders && userPrefs.phoneNumber) {
-          console.log('Sending SMS reminder for task:', task.activity);
-          await fetch('/api/send-sms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: userPrefs.phoneNumber,
-              message: reminderMessage,
-              userId: user.uid
-            }),
-          });
-        }
-
-        // Send push notification
-        try {
-          console.log('Sending push notification for task:', task.activity);
-          await fetch('/api/push/send', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              title: `Reminder: ${task.activity} starts in ${userPrefs.reminderTime} minutes`,
-              userId: user.uid,
-              message: `Reminder: ${task.activity} starts in ${userPrefs.reminderTime} minutes`
-            }),
-          });
-        } catch (error) {
-          console.error('Error sending push notification:', error);
-        }
-
-        await updateDoc(doc(db, 'tasks', task.id), {
-          reminderSent: true,
-        });
-        return true;
-      }
+      // Only update the reminderSent flag to false to allow the notification API to handle it
+      await updateDoc(doc(db, 'tasks', task.id), {
+        reminderSent: false
+      });
+      return true;
     } catch (error) {
-      console.error('Error sending reminders:', error);
+      console.error('Error updating reminder status:', error);
       return false;
     }
-    
-    return false;
   };
 
   const PremiumUpgradePrompt = () => (
@@ -429,21 +349,15 @@ export default function DailyTaskManager() {
   }, [])
 
   useEffect(() => {
-    console.log('Setting up reminder interval');
-    if (!user?.email) {
-      console.log('No user or email - skipping reminder setup');
-      return;
-    }
+    if (!user?.email) return;
 
     // Keep track of reminded tasks to prevent duplicates
     const remindedTasks = new Set();
 
     const checkAndSendReminderOnce = async (task: Task) => {
-      // Create a unique key for this task and time
       const now = new Date();
       const reminderKey = `${task.id}-${now.getHours()}-${now.getMinutes()}`;
       
-      // Only send if we haven't reminded for this task in this minute
       if (!remindedTasks.has(reminderKey)) {
         const shouldRemind = await checkAndSendReminder(task);
         if (shouldRemind) {
@@ -454,9 +368,8 @@ export default function DailyTaskManager() {
       }
     };
 
-    // Set up the interval
+    // Set up the interval to check tasks
     const reminderInterval = setInterval(() => {
-      console.log('Checking reminders...');
       const currentTasks = getCurrentTasks();
       currentTasks.forEach(checkAndSendReminderOnce);
     }, 60000); // Check every minute
@@ -466,7 +379,6 @@ export default function DailyTaskManager() {
     initialTasks.forEach(checkAndSendReminderOnce);
 
     return () => {
-      console.log('Cleaning up reminder interval');
       clearInterval(reminderInterval);
       remindedTasks.clear();
     };
@@ -650,59 +562,46 @@ export default function DailyTaskManager() {
 
   const loadTasks = async () => {
     if (!user) {
-      setTodayTasks([])
-      setTomorrowTasks([])
-      setIsLoading(false)
-      return
+      setTodayTasks([]);
+      setTomorrowTasks([]);
+      setIsLoading(false);
+      return;
     }
 
     try {
-      const todayQuery = query(
-        collection(db, 'tasks'),
-        where('userId', '==', user.uid),
-        where('date', '==', today),
-        orderBy('startTime', 'asc')
-      )
-      
-      const tomorrowQuery = query(
-        collection(db, 'tasks'),
-        where('userId', '==', user.uid),
-        where('date', '==', tomorrow),
-        orderBy('startTime', 'asc')
-      )
+      const [tasksSnapshot, notificationHistorySnapshot] = await Promise.all([
+        getDocs(query(
+          collection(db, 'tasks'),
+          where('userId', '==', user.uid),
+          where('date', 'in', [today, tomorrow]),
+          orderBy('startTime', 'asc')
+        )),
+        getDocs(query(
+          collection(db, 'notificationHistory'),
+          where('userId', '==', user.uid),
+          orderBy('createdAt', 'desc'),
+          limit(10)
+        ))
+      ]);
 
-      const [todaySnapshot, tomorrowSnapshot] = await Promise.all([
-        getDocs(todayQuery),
-        getDocs(tomorrowQuery)
-      ])
-
-      const loadedTodayTasks = todaySnapshot.docs.map(doc => ({
+      // Process tasks with notification status
+      const tasks = tasksSnapshot.docs.map(doc => ({
         ...doc.data(),
         id: doc.id
-      })) as Task[]
+      })) as Task[];
 
-      const loadedTomorrowTasks = tomorrowSnapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id
-      })) as Task[]
-
-      setTodayTasks(loadedTodayTasks)
-      setTomorrowTasks(loadedTomorrowTasks)
-      setIsLoading(false)
+      setTodayTasks(tasks.filter(task => task.date === today));
+      setTomorrowTasks(tasks.filter(task => task.date === tomorrow));
+      setIsLoading(false);
     } catch (error) {
-      console.error('Error loading tasks:', error)
-      setIsLoading(false)
+      console.error('Error loading tasks:', error);
+      setIsLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
     loadTasks()
   }, [user])
-
-  // useEffect(() => {
-  //   const completed = getCurrentTasks().filter(task => task.isPriority && task.completed).length
-  //   // setCompletedPriorities(completed)
-  // }, [todayTasks, tomorrowTasks, showTomorrow])
 
   useEffect(() => {
     if (showTomorrow && user) {
@@ -738,12 +637,11 @@ export default function DailyTaskManager() {
     
     setIsLoadingSuggestions(true);
     try {
-      // Get historical tasks from the last 7 days
+
       const last7Days = Array.from({ length: 7 }, (_, i) => 
         formatDate(addDays(new Date(), -(i + 1)))
       )
 
-      console.log('Last 7 days:', last7Days)
       const historicalTasksQuery = query(
         collection(db, 'tasks'),
         where('userId', '==', user.uid),
@@ -755,49 +653,62 @@ export default function DailyTaskManager() {
       const historicalTasks = snapshot.docs.map(doc => ({
         ...doc.data()
       })) as Task[]
-
-      console.log('Historical tasks:', historicalTasks)
       
-      const newSuggestions = await generateSuggestions(historicalTasks)
-      setSuggestions(newSuggestions)
+      const response = await fetch('/api/generate-suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          historicalTasks,
+          userId: user.uid  // Add this line
+        }),
+      });
+      
+      if (!response.ok) throw new Error('Failed to generate suggestions');
+      const newSuggestions = await response.json();
+      setSuggestions(newSuggestions);
     } catch (error) {
-      console.error('Error loading suggestions:', error)
+      console.error('Error loading suggestions:', error);
     } finally {
-      setIsLoadingSuggestions(false)
+      setIsLoadingSuggestions(false);
     }
-  }, [user]); // Add any other dependencies used in loadSuggestions
+  }, [user]);
 
   const hours = Array.from({ length: 24 }, (_, i) => i)
 
   const saveTask = async (task: Task) => {
-    if (!user || !canModifyTasks()) return
-
-    const taskToSave = {
-      ...task,
-      date: showTomorrow ? tomorrow : today,
-      userId: user.uid,
-      createdAt: Date.now()
-    }
-
     try {
+      const taskData = {
+        ...task,
+        userId: user?.uid,
+        reminderSent: false,
+        createdAt: Date.now() // Changed from toISOString() to timestamp
+      };
+
+      let savedTaskId: string;
       if (task.id) {
-        await updateDoc(doc(db, 'tasks', task.id), taskToSave)
-        const updatedTasks = getCurrentTasks().map(t => 
-          t.id === task.id ? { ...taskToSave, id: task.id } : t
-        )
-        setCurrentTasks(updatedTasks)
+        await updateDoc(doc(db, 'tasks', task.id), taskData);
+        savedTaskId = task.id;
       } else {
-        const docRef = await addDoc(collection(db, 'tasks'), taskToSave)
-        setCurrentTasks([...getCurrentTasks(), { ...taskToSave, id: docRef.id }])
+        const docRef = await addDoc(collection(db, 'tasks'), taskData);
+        savedTaskId = docRef.id;
       }
       
-      setShowTaskModal(false)
-      setEditingTask(null)
+      // Update local state immediately
+      const updatedTask = { ...taskData, id: savedTaskId };
+      if (task.date === today) {
+        setTodayTasks(prev => [...prev, updatedTask as Task]);
+      } else {
+        setTomorrowTasks(prev => [...prev, updatedTask as Task]);
+      }
+      
+      setShowTaskModal(false);
+      setEditingTask(null);
+      showToast('Task saved successfully', 'success');
     } catch (error) {
-      console.error('Error saving task:', error)
-      alert('Failed to save task. Please try again.')
+      console.error('Error saving task:', error);
+      showToast('Failed to save task', 'error');
     }
-  }
+  };
 
   const handleTaskDelete = async (task: Task) => {
     if (!task.id || !user) return
@@ -952,20 +863,12 @@ export default function DailyTaskManager() {
     setSelectionEnd(null)
   }
 
-  // const isActiveHour = (hour: number) => {
-  //   return activeHours.some(block => hour >= block.start && hour <= block.end)
-  // }
-
   const priorityTasksCount = getCurrentTasks().filter(task => task.isPriority).length
   const completedTasksCount = getCurrentTasks().filter(task => task.completed).length
   const completedPriorityCount = getCurrentTasks().filter(task => 
     task.isPriority && task.completed
   ).length
   const totalTasksCount = getCurrentTasks().length
-
-  // const [activeHours, setActiveHours] = useState<TimeBlock[]>([
-  //   { start: 6, end: 22 }
-  // ])
 
   const handleTaskComplete = async (task: Task) => {
     
@@ -1191,23 +1094,54 @@ export default function DailyTaskManager() {
                     {isPremiumUser && (
                       <Link
                         href="/analytics"
-                        className={`block w-full px-4 py-2 text-sm transition-colors
-                          ${theme === 'dark'
-                            ? 'text-slate-300 hover:bg-slate-700/70 active:bg-slate-600'
-                            : 'text-slate-700 hover:bg-slate-50 active:bg-slate-100'
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setIsNavigating(true)
+                          router.push('/analytics')
+                        }}
+                        className={`
+                          p-2 rounded-lg transition-colors flex items-center gap-2
+                          ${!isPremiumUser 
+                            ? theme === 'dark'
+                              ? 'bg-slate-700/50 text-slate-400 cursor-not-allowed'
+                              : 'bg-slate-100/50 text-slate-500 cursor-not-allowed'
+                            : theme === 'dark'
+                              ? 'bg-violet-500/20 text-violet-400 hover:bg-violet-500/30'
+                              : 'bg-violet-50 text-violet-600 hover:bg-violet-100'
                           }
-                          hover:scale-[0.98] transform duration-100
-                          mx-auto my-0.5 rounded-lg
                         `}
                       >
-                        <div className="flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                            />
-                          </svg>
-                          Analytics
-                        </div>
+                        {isNavigating ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            <span className="hidden sm:inline">Loading...</span>
+                          </div>
+                        ) : (
+                          <>
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round" 
+                                strokeWidth={2} 
+                                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                              />
+                            </svg>
+                            <span className="hidden sm:inline">
+                              {isPremiumUser ? 'View Analytics' : 'Analytics'}
+                            </span>
+                            {!isPremiumUser && (
+                              <span className={`
+                                ml-1 px-1.5 py-0.5 text-xs rounded-full
+                                ${theme === 'dark' 
+                                  ? 'bg-violet-500/20 text-violet-400' 
+                                  : 'bg-violet-100 text-violet-600'
+                                }
+                              `}>
+                                PRO
+                              </span>
+                            )}
+                          </>
+                        )}
                       </Link>
                     )}
 
@@ -1438,27 +1372,36 @@ export default function DailyTaskManager() {
                       `}
 
                     >
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path 
-                          strokeLinecap="round" 
-                          strokeLinejoin="round" 
-                          strokeWidth={2} 
-                          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                        />
-                      </svg>
-                      <span className="hidden sm:inline">
-                        {isPremiumUser ? 'View Analytics' : 'Analytics'}
-                      </span>
-                      {!isPremiumUser && (
-                        <span className={`
-                          ml-1 px-1.5 py-0.5 text-xs rounded-full
-                          ${theme === 'dark' 
-                            ? 'bg-violet-500/20 text-violet-400' 
-                            : 'bg-violet-100 text-violet-600'
-                          }
-                        `}>
-                          PRO
-                        </span>
+                      {isNavigating ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          <span className="hidden sm:inline">Loading...</span>
+                        </div>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round" 
+                              strokeWidth={2} 
+                              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                            />
+                          </svg>
+                          <span className="hidden sm:inline">
+                            {isPremiumUser ? 'View Analytics' : 'Analytics'}
+                          </span>
+                          {!isPremiumUser && (
+                            <span className={`
+                              ml-1 px-1.5 py-0.5 text-xs rounded-full
+                              ${theme === 'dark' 
+                                ? 'bg-violet-500/20 text-violet-400' 
+                                : 'bg-violet-100 text-violet-600'
+                              }
+                            `}>
+                              PRO
+                            </span>
+                          )}
+                        </>
                       )}
                     </Link>
                   )}
