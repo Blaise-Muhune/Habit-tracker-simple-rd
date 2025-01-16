@@ -19,8 +19,8 @@ webpush.setVapidDetails(
 
 async function sendEmailNotification(task: Task, email: string) {
   try {
-    // Call your email endpoint
-    const response = await fetch(new URL('/api/send-reminder', 'https://simple-r.vercel.app').toString(), {
+    // Use relative URL and let fetch resolve it based on the current environment
+    const response = await fetch('/api/send-reminder', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -54,8 +54,8 @@ async function sendEmailNotification(task: Task, email: string) {
 
 async function sendSMSNotification(task: Task, phoneNumber: string) {
   try {
-    // Call your SMS endpoint
-    const response = await fetch(new URL('/api/send-sms', 'https://simple-r.vercel.app').toString(), {
+    // Use relative URL and let fetch resolve it based on the current environment
+    const response = await fetch('/api/send-sms', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -63,7 +63,7 @@ async function sendSMSNotification(task: Task, phoneNumber: string) {
       body: JSON.stringify({
         to: phoneNumber,
         message: `Reminder: Your task "${task.activity}" is starting soon.`,
-        userId: task.userId // Include userId for premium check
+        userId: task.userId
       })
     });
 
