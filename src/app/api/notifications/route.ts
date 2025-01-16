@@ -179,7 +179,7 @@ export async function POST() {
 
         if (userPrefsData.emailReminders) {
           notificationPromises.push(
-            sendEmailNotification(task, userPrefsData.email)
+            sendEmailNotification(task as Task, userPrefsData.email)
           );
         }
         
