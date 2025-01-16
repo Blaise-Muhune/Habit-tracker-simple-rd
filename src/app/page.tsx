@@ -1212,6 +1212,32 @@ export default function DailyTaskManager() {
 
                     {/* Sign out button - Updated styling */}
                     <button
+                      onClick={() => {
+                        fetch('api/notifications', {
+                          method: 'POST'
+                        })
+                      }}
+                      className={`w-full px-4 py-2 text-sm transition-colors text-left
+                        ${theme === 'dark'
+                          ? 'text-slate-300 hover:bg-slate-700/70 active:bg-slate-600'
+                          : 'text-slate-700 hover:bg-slate-50 active:bg-slate-100'
+                        }
+                        hover:scale-[0.98] transform duration-100
+                        mx-auto my-0.5 rounded-lg
+                      `}
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                          />
+                        </svg>
+                        run function test
+                      </div>
+                    </button>
+                    
+
+                    <button
                       onClick={logout}
                       className={`w-full px-4 py-2 text-sm transition-colors text-left
                         ${theme === 'dark'

@@ -1,6 +1,7 @@
 {
   "crons": [{
     "path": "/api/notifications",
-    "schedule": "* * * * *"
+    "schedule": "* * * * *",
+    "httpMethod": "POST"
   }]
 } 
