@@ -20,7 +20,7 @@ webpush.setVapidDetails(
 async function sendEmailNotification(task: Task, email: string) {
   try {
     // Call your email endpoint
-    const response = await fetch(new URL('/api/send-reminder', process.env.NEXT_PUBLIC_APP_URL!).toString(), {
+    const response = await fetch(new URL('/api/send-reminder', 'https://simple-r.vercel.app').toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -55,7 +55,7 @@ async function sendEmailNotification(task: Task, email: string) {
 async function sendSMSNotification(task: Task, phoneNumber: string) {
   try {
     // Call your SMS endpoint
-    const response = await fetch(new URL('/api/send-sms', process.env.NEXT_PUBLIC_APP_URL!).toString(), {
+    const response = await fetch(new URL('/api/send-sms', 'https://simple-r.vercel.app').toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -130,13 +130,14 @@ async function sendPushNotification(task: Task, pushSubscription: webpush.PushSu
 }
 
 export async function GET(req: Request) {
-
   console.log(req.body,'GET request received');
 
-  // Move your notification logic here from the POST handler
   const now = new Date();
-  const currentMinute = now.getMinutes();
   const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+
+  console.log('🔔 Starting notification check at:', new Date().toISOString());
+  console.log('Current hour/minute:', { currentHour, currentMinute });
 
   try {
     // Get all tasks for today
@@ -148,10 +149,17 @@ export async function GET(req: Request) {
     );
     
     const tasksSnapshot = await getDocs(q);
-    const notifications = [];
+    console.log(`📋 Found ${tasksSnapshot.size} tasks for today`);
+    const notifications: any[] = [];
 
     for (const taskDoc of tasksSnapshot.docs) {
       const task = taskDoc.data();
+      console.log('Processing task:', { 
+        activity: task.activity, 
+        startTime: task.startTime,
+        userId: task.userId 
+      });
+
       const userPrefsRef = collection(db, 'userPreferences');
       const userPrefsSnap = await getDocs(query(userPrefsRef, where('userId', '==', task.userId)));
       
@@ -177,8 +185,16 @@ export async function GET(req: Request) {
         }
       }
 
+      console.log('Calculated notification time:', { 
+        notificationHour, 
+        notificationMinute,
+        reminderMinutes 
+      });
+
       // Check if it's time to send notification
       if (currentHour === notificationHour && currentMinute === notificationMinute) {
+        console.log('🚀 Sending notifications for task:', task.activity);
+        
         const notificationPromises = [];
 
         if (userPrefsData.emailReminders) {
@@ -200,8 +216,16 @@ export async function GET(req: Request) {
           );
         }
 
+        console.log('Notification channels enabled:', {
+          email: userPrefsData.emailReminders,
+          sms: userPrefsData.smsReminders && userPrefsData.phoneNumber,
+          push: userPrefsData.pushReminders && userPrefsData.pushSubscription
+        });
+
         // Wait for all notifications to be sent
         const results = await Promise.all(notificationPromises);
+        console.log('Notification results:', results);
+        notifications.push(...results);
 
         // Check for invalid push subscriptions
         const invalidPushSubscription = results.find(
@@ -223,15 +247,19 @@ export async function GET(req: Request) {
             pushSubscription: null
           });
         }
+      } else {
+        console.log('⏳ Not time yet for notification');
       }
     }
     
+    console.log(`✅ Notification check complete. Sent ${notifications.length} notifications`);
     return NextResponse.json({ 
       success: true, 
-      notificationsSent: notifications.length 
+      notificationsSent: notifications.length,
+      notifications
     });
   } catch (error) {
-    console.error('Error in notification function:', error);
+    console.error('❌ Error in notification function:', error);
     return NextResponse.json(
       { 
         success: false, 
@@ -245,7 +273,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   // For manual triggers, perhaps from admin dashboard
   // You might want to add authentication here
-  console.log(req);
+  console.log(req.body,'POST request received');
   const now = new Date();
   const currentMinute = now.getMinutes();
   const currentHour = now.getHours();
@@ -260,7 +288,7 @@ export async function POST(req: Request) {
     );
     
     const tasksSnapshot = await getDocs(q);
-    const notifications = [];
+    const notifications: any[] = [];
 
     for (const taskDoc of tasksSnapshot.docs) {
       const task = taskDoc.data();
@@ -314,6 +342,7 @@ export async function POST(req: Request) {
 
         // Wait for all notifications to be sent
         const results = await Promise.all(notificationPromises);
+        notifications.push(...results);
 
         // Check for invalid push subscriptions
         const invalidPushSubscription = results.find(
@@ -340,7 +369,8 @@ export async function POST(req: Request) {
     
     return NextResponse.json({ 
       success: true, 
-      notificationsSent: notifications.length 
+      notificationsSent: notifications.length,
+      notifications
     });
   } catch (error) {
     console.error('Error in notification function:', error);
