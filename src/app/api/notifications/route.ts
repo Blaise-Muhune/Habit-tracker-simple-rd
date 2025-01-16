@@ -150,7 +150,7 @@ export async function GET(req: Request) {
     
     const tasksSnapshot = await getDocs(q);
     console.log(`📋 Found ${tasksSnapshot.size} tasks for today`);
-    const notifications: any[] = [];
+    const notifications: { success: boolean; type: string; recipient: string; error?: string }[] = [];
 
     for (const taskDoc of tasksSnapshot.docs) {
       const task = taskDoc.data();
@@ -288,7 +288,7 @@ export async function POST(req: Request) {
     );
     
     const tasksSnapshot = await getDocs(q);
-    const notifications: any[] = [];
+    const notifications: { success: boolean; type: string; recipient: string; error?: string }[] = [];
 
     for (const taskDoc of tasksSnapshot.docs) {
       const task = taskDoc.data();
