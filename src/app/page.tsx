@@ -569,40 +569,45 @@ export default function DailyTaskManager() {
     }
 
     try {
-      const [tasksSnapshot, notificationHistorySnapshot] = await Promise.all([
-        getDocs(query(
-          collection(db, 'tasks'),
-          where('userId', '==', user.uid),
-          where('date', 'in', [today, tomorrow]),
-          orderBy('startTime', 'asc')
-        )),
-        getDocs(query(
-          collection(db, 'notificationHistory'),
-          where('userId', '==', user.uid),
-          orderBy('createdAt', 'desc'),
-          limit(10)
-        ))
-      ]);
-      console.log('notificationHistorySnapshot', notificationHistorySnapshot)
+      // Create a query for tasks with today's and tomorrow's dates
+      const tasksQuery = query(
+        collection(db, 'tasks'),
+        where('userId', '==', user.uid),
+        where('date', 'in', [today, tomorrow]),
+        orderBy('startTime', 'asc')
+      );
 
-      // Process tasks with notification status
+      const tasksSnapshot = await getDocs(tasksQuery);
+      
+      // Convert the snapshot to Task objects with IDs
       const tasks = tasksSnapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id
+        id: doc.id,  // Make sure to include the document ID
+        ...doc.data()
       })) as Task[];
 
-      setTodayTasks(tasks.filter(task => task.date === today));
-      setTomorrowTasks(tasks.filter(task => task.date === tomorrow));
+      // Separate tasks into today and tomorrow arrays
+      const todayTasksList = tasks.filter(task => task.date === today);
+      const tomorrowTasksList = tasks.filter(task => task.date === tomorrow);
+
+      console.log('Loaded tasks:', { today: todayTasksList, tomorrow: tomorrowTasksList });
+
+      // Update state
+      setTodayTasks(todayTasksList);
+      setTomorrowTasks(tomorrowTasksList);
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading tasks:', error);
       setIsLoading(false);
+      showToast('Failed to load tasks', 'error');
     }
   };
 
+  // Make sure this useEffect runs when needed
   useEffect(() => {
-    loadTasks()
-  }, [user])
+    if (user) {
+      loadTasks();
+    }
+  }, [user]); // Only depend on user changes
 
   useEffect(() => {
     if (showTomorrow && user) {
@@ -654,31 +659,44 @@ export default function DailyTaskManager() {
   const hours = Array.from({ length: 24 }, (_, i) => i)
 
   const saveTask = async (task: Task) => {
+    if (!user) return;
+
     try {
       const taskData = {
         ...task,
-        userId: user?.uid,
+        userId: user.uid,
         reminderSent: false,
-        createdAt: Date.now() // Changed from toISOString() to timestamp
+        createdAt: Date.now()
       };
 
       let savedTaskId: string;
+      
       if (task.id) {
+        // Update existing task
         await updateDoc(doc(db, 'tasks', task.id), taskData);
         savedTaskId = task.id;
       } else {
+        // Create new task
         const docRef = await addDoc(collection(db, 'tasks'), taskData);
         savedTaskId = docRef.id;
       }
-      
-      // Update local state immediately
+
+      // Create updated task with ID
       const updatedTask = { ...taskData, id: savedTaskId };
+
+      // Update local state based on the date
       if (task.date === today) {
-        setTodayTasks(prev => [...prev, updatedTask as Task]);
+        setTodayTasks(prev => {
+          const filtered = prev.filter(t => t.id !== savedTaskId);
+          return [...filtered, updatedTask];
+        });
       } else {
-        setTomorrowTasks(prev => [...prev, updatedTask as Task]);
+        setTomorrowTasks(prev => {
+          const filtered = prev.filter(t => t.id !== savedTaskId);
+          return [...filtered, updatedTask];
+        });
       }
-      
+
       setShowTaskModal(false);
       setEditingTask(null);
       showToast('Task saved successfully', 'success');
