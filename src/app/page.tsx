@@ -569,6 +569,7 @@ export default function DailyTaskManager() {
     }
 
     try {
+      setIsLoading(true); // Add this line to ensure loading state is set when starting to load
       // Create a query for tasks with today's and tomorrow's dates
       const tasksQuery = query(
         collection(db, 'tasks'),
@@ -581,7 +582,7 @@ export default function DailyTaskManager() {
       
       // Convert the snapshot to Task objects with IDs
       const tasks = tasksSnapshot.docs.map(doc => ({
-        id: doc.id,  // Make sure to include the document ID
+        id: doc.id,
         ...doc.data()
       })) as Task[];
 
@@ -589,16 +590,14 @@ export default function DailyTaskManager() {
       const todayTasksList = tasks.filter(task => task.date === today);
       const tomorrowTasksList = tasks.filter(task => task.date === tomorrow);
 
-      console.log('Loaded tasks:', { today: todayTasksList, tomorrow: tomorrowTasksList });
-
       // Update state
       setTodayTasks(todayTasksList);
       setTomorrowTasks(tomorrowTasksList);
-      setIsLoading(false);
     } catch (error) {
       console.error('Error loading tasks:', error);
-      setIsLoading(false);
       showToast('Failed to load tasks', 'error');
+    } finally {
+      setIsLoading(false); // Move this to finally block to ensure it's always called
     }
   };
 
@@ -606,6 +605,11 @@ export default function DailyTaskManager() {
   useEffect(() => {
     if (user) {
       loadTasks();
+    } else {
+      // Add this else block to set loading to false when there's no user
+      setIsLoading(false);
+      setTodayTasks([]);
+      setTomorrowTasks([]);
     }
   }, [user]); // Only depend on user changes
 
