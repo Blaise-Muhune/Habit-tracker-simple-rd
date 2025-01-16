@@ -1214,7 +1214,7 @@ export default function DailyTaskManager() {
                     <button
                       onClick={() => {
                         fetch('api/notifications', {
-                          method: 'POST'
+                          method: 'GET',
                         })
                       }}
                       className={`w-full px-4 py-2 text-sm transition-colors text-left

@@ -130,12 +130,7 @@ async function sendPushNotification(task: Task, pushSubscription: webpush.PushSu
 }
 
 export async function GET(req: Request) {
-  // Check if this is a cron job request
-  const isCronJob = req.headers.get('user-agent')?.includes('Vercel Cron');
-  
-  if (!isCronJob) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+
 
   // Move your notification logic here from the POST handler
   const now = new Date();
