@@ -283,22 +283,7 @@ export default function DailyTaskManager() {
     }
   }
 
-  const checkAndSendReminder = async (task: Task) => {
-    if (!user?.email || !task.id) {
-      return false;
-    }
-    
-    try {
-      // Only update the reminderSent flag to false to allow the notification API to handle it
-      await updateDoc(doc(db, 'tasks', task.id), {
-        reminderSent: false
-      });
-      return true;
-    } catch (error) {
-      console.error('Error updating reminder status:', error);
-      return false;
-    }
-  };
+ 
 
   const PremiumUpgradePrompt = () => (
     <div className={`
@@ -336,8 +321,14 @@ export default function DailyTaskManager() {
   
   
   
-  
-  
+  // update user timezone
+  useEffect(() => {
+    if (user) {
+      updateDoc(doc(db, 'userPreferences', user.uid), {
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      })
+    }
+  }, []);
   
 
   useEffect(() => {
@@ -348,41 +339,7 @@ export default function DailyTaskManager() {
     return () => clearInterval(timer)
   }, [])
 
-  useEffect(() => {
-    if (!user?.email) return;
-
-    // Keep track of reminded tasks to prevent duplicates
-    const remindedTasks = new Set();
-
-    const checkAndSendReminderOnce = async (task: Task) => {
-      const now = new Date();
-      const reminderKey = `${task.id}-${now.getHours()}-${now.getMinutes()}`;
-      
-      if (!remindedTasks.has(reminderKey)) {
-        const shouldRemind = await checkAndSendReminder(task);
-        if (shouldRemind) {
-          remindedTasks.add(reminderKey);
-          // Clean up old entries after 2 minutes
-          setTimeout(() => remindedTasks.delete(reminderKey), 120000);
-        }
-      }
-    };
-
-    // Set up the interval to check tasks
-    const reminderInterval = setInterval(() => {
-      const currentTasks = getCurrentTasks();
-      currentTasks.forEach(checkAndSendReminderOnce);
-    }, 60000); // Check every minute
-
-    // Initial check
-    const initialTasks = getCurrentTasks();
-    initialTasks.forEach(checkAndSendReminderOnce);
-
-    return () => {
-      clearInterval(reminderInterval);
-      remindedTasks.clear();
-    };
-  }, [user, getCurrentTasks]);
+ 
 
   useEffect(() => {
     if (!showTomorrow) {
@@ -424,6 +381,8 @@ export default function DailyTaskManager() {
     } else {
       setIsPremiumUser(false);
     }
+
+    
   }, [user]);
 
   useEffect(() => {
@@ -494,6 +453,7 @@ export default function DailyTaskManager() {
   }
 
   const handleMidnightTransition = async () => {
+    console.log('handleMidnightTransition called');
     if (!user) return
 
     try {
@@ -561,6 +521,7 @@ export default function DailyTaskManager() {
   };
 
   const loadTasks = async () => {
+    console.log('user logged in', user);
     if (!user) {
       setTodayTasks([]);
       setTomorrowTasks([]);
@@ -900,9 +861,10 @@ export default function DailyTaskManager() {
   }
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen p-8">
-        {isLoading ? (
+    // Only show loading state if there's a user and we're actually loading data
+    if (user) {
+      return (
+        <div className="min-h-screen p-8">
           <div className="flex items-center justify-center min-h-[60vh]">
             <div className="flex flex-col items-center gap-4">
               <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -911,13 +873,12 @@ export default function DailyTaskManager() {
               </p>
             </div>
           </div>
-        ) : (
-          <div className="h-screen flex items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
-          </div>
-        )}
-      </div>
-    )
+        </div>
+      );
+    }
+    
+    // If no user is signed in, set loading to false and continue to render the main UI
+    setIsLoading(false);
   }
 
   const handleTaskClick = (task: Task) => {
@@ -1023,17 +984,14 @@ export default function DailyTaskManager() {
         'UTC';
 
     console.log('Detected timezone:', timezone);
+
     
     const response = await fetch('/api/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        userId: user?.uid,
-        date: new Date().toLocaleDateString('en-CA'),
-        timezone: timezone || 'UTC' // Fallback to UTC if timezone detection fails
-      })
+
     });
 
     const data = await response.json();

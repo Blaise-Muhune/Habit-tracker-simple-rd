@@ -156,214 +156,15 @@ function getUserLocalTime(userTimezone: string) {
   };
 }
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
+  console.log('request base url', request.url)
   console.log('🔄 POST request received');
 
   try {
-    const body = await req.json();
-    const { userId, date, timezone } = body; // Add timezone to request body
-    
-    if (!userId || !date || !timezone) {
-      console.error('❌ Missing required fields:', { userId, date, timezone });
-      return new Response(JSON.stringify({ error: 'Missing required fields (userId, date, timezone)' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Get time in user's timezone
-    const userTime = getUserLocalTime(timezone);
-    const currentHour = userTime.hour;
-    const currentMinute = userTime.minute;
-
-    console.log('⏰ User local time:', {
-      timezone,
-      currentTime: `${currentHour}:${currentMinute}`,
-      date: userTime.date
-    });
-
-    // Query tasks
-    console.log('🔍 Querying tasks for:', { userId, date });
+    // Query all tasks that haven't sent reminders yet
     const tasksQuery = query(
       collection(db, 'tasks'),
-      where('userId', '==', userId),
-      where('reminderSent', '==', false),
-      where('date', '==', date)
-    );
-
-    const tasksSnapshot = await getDocs(tasksQuery);
-    console.log('📊 Found tasks:', {
-      count: tasksSnapshot.size,
-      taskIds: tasksSnapshot.docs.map(doc => doc.id)
-    });
-
-    // Get user preferences
-    console.log('👤 Fetching user preferences for:', userId);
-    const userPrefsDoc = await getDoc(doc(db, 'userPreferences', userId));
-    
-    if (!userPrefsDoc.exists()) {
-      console.error('❌ User preferences not found:', { userId });
-      return new Response(JSON.stringify({ error: 'User preferences not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    const userPrefs = userPrefsDoc.data();
-    console.log('⚙️ User preferences:', {
-      userId,
-      emailReminders: userPrefs.emailReminders,
-      smsReminders: userPrefs.smsReminders,
-      pushReminders: userPrefs.pushReminders
-    });
-
-    const results = [];
-    for (const taskDoc of tasksSnapshot.docs) {
-      const task = taskDoc.data();
-      console.log('📝 Processing task:', {
-        taskId: taskDoc.id,
-        activity: task.activity,
-        startTime: task.startTime
-      });
-
-      // Calculate notification time
-      const notificationHour = task.startTime - 1;
-      const notificationMinute = 60 - (userPrefs.reminderTime || 10);
-
-      console.log('⏰ Notification timing:', {
-        taskId: taskDoc.id,
-        notificationHour,
-        currentHour,
-        currentMinute,
-        notificationMinute
-      });
-
-      if (currentHour === notificationHour && currentMinute === notificationMinute) {
-        console.log('🔔 Sending notifications for task:', taskDoc.id);
-
-        const notificationResults = [];
-
-        // Email notification
-        if (userPrefs.emailReminders && userPrefs.email) {
-          console.log('📧 Attempting email notification:', {
-            taskId: taskDoc.id,
-            email: userPrefs.email
-          });
-          const emailResult = await sendEmailNotification(task as Task, userPrefs.email);
-          notificationResults.push(emailResult);
-        }
-
-        // SMS notification
-        if (userPrefs.smsReminders && userPrefs.phoneNumber) {
-          console.log('📱 Attempting SMS notification:', {
-            taskId: taskDoc.id,
-            phone: userPrefs.phoneNumber
-          });
-          const smsResult = await sendSMSNotification(task as Task, userPrefs.phoneNumber);
-          notificationResults.push(smsResult);
-        }
-
-        // Push notification
-        if (userPrefs.pushReminders && userPrefs.pushSubscription) {
-          console.log('🔔 Attempting push notification:', {
-            taskId: taskDoc.id,
-            endpoint: userPrefs.pushSubscription.endpoint
-          });
-          const pushResult = await sendPushNotification(task as Task, userPrefs.pushSubscription);
-          notificationResults.push(pushResult);
-        }
-
-        console.log('✅ Notification results:', {
-          taskId: taskDoc.id,
-          results: notificationResults
-        });
-
-        results.push({
-          taskId: taskDoc.id,
-          notifications: notificationResults
-        });
-
-        // Update task reminder status
-        try {
-          console.log('📝 Updating task reminder status:', taskDoc.id);
-          await updateDoc(doc(db, 'tasks', taskDoc.id), {
-            reminderSent: true
-          });
-          console.log('✅ Task reminder status updated:', taskDoc.id);
-        } catch (error) {
-          console.error('❌ Failed to update task reminder status:', {
-            taskId: taskDoc.id,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          });
-        }
-      } else {
-        console.log('⏳ Skipping notification - not time yet:', {
-          taskId: taskDoc.id,
-          scheduledFor: `${notificationHour}`,
-          currentTime: `${currentHour}:${currentMinute}`
-        });
-      }
-    }
-
-    console.log('🏁 POST request completed:', {
-      tasksProcessed: tasksSnapshot.size,
-      notificationsSent: results.length
-    });
-
-    return new Response(JSON.stringify({ success: true, results }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-  } catch (error) {
-    console.error('💥 Critical error in POST handler:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
-    });
-
-    return new Response(JSON.stringify({ 
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-}
-
-export async function GET(req: Request) {
-  console.log('🔄 GET request received');
-
-  try {
-    // Get timezone from URL params
-    const { searchParams } = new URL(req.url);
-    const timezone = searchParams.get('timezone');
-
-    if (!timezone) {
-      return new Response(JSON.stringify({ error: 'Missing timezone parameter' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Get time in user's timezone
-    const userTime = getUserLocalTime(timezone);
-    const currentHour = userTime.hour;
-    const currentMinute = userTime.minute;
-    const date = userTime.date;
-
-    console.log('⏰ User local time:', {
-      timezone,
-      currentTime: `${currentHour}:${currentMinute}`,
-      date
-    });
-
-    // Query tasks
-    console.log('🔍 Querying tasks for:', { date });
-    const tasksQuery = query(
-      collection(db, 'tasks'),
-      where('reminderSent', '==', false),
-      where('date', '==', date)
+      where('reminderSent', '==', false)
     );
 
     const tasksSnapshot = await getDocs(tasksQuery);
@@ -385,22 +186,35 @@ export async function GET(req: Request) {
       }
 
       const userPrefs = userPrefsDoc.data();
+      const userTimezone = userPrefs.timezone || 'UTC'; // Fallback to UTC if no timezone set
+
+      // Get time in user's timezone
+      const userTime = getUserLocalTime(userTimezone);
+      const currentHour = userTime.hour;
+      const currentMinute = userTime.minute;
+      const userDate = userTime.date;
+
+      // Skip if task date doesn't match user's current date
+      if (task.date !== userDate) {
+        console.log('⏭️ Skipping task - different date:', {
+          taskId: taskDoc.id,
+          taskDate: task.date,
+          userDate
+        });
+        continue;
+      }
+
       console.log('📝 Processing task:', {
         taskId: taskDoc.id,
         activity: task.activity,
-        startTime: task.startTime
+        startTime: task.startTime,
+        userTimezone,
+        userLocalTime: `${currentHour}:${currentMinute}`
       });
 
       // Calculate notification time
       const notificationHour = task.startTime - 1;
       const notificationMinute = 60 - (userPrefs.reminderTime || 10);
-
-      console.log('⏰ Notification timing:', {
-        taskId: taskDoc.id,
-        notificationHour,
-        currentHour,
-        currentMinute
-      });
 
       if (currentHour === notificationHour && currentMinute === notificationMinute) {
         console.log('🔔 Sending notifications for task:', taskDoc.id);
@@ -409,38 +223,21 @@ export async function GET(req: Request) {
 
         // Email notification
         if (userPrefs.emailReminders && userPrefs.email) {
-          console.log('📧 Attempting email notification:', {
-            taskId: taskDoc.id,
-            email: userPrefs.email
-          });
           const emailResult = await sendEmailNotification(task as Task, userPrefs.email);
           notificationResults.push(emailResult);
         }
 
         // SMS notification
         if (userPrefs.smsReminders && userPrefs.phoneNumber) {
-          console.log('📱 Attempting SMS notification:', {
-            taskId: taskDoc.id,
-            phone: userPrefs.phoneNumber
-          });
           const smsResult = await sendSMSNotification(task as Task, userPrefs.phoneNumber);
           notificationResults.push(smsResult);
         }
 
         // Push notification
         if (userPrefs.pushReminders && userPrefs.pushSubscription) {
-          console.log('🔔 Attempting push notification:', {
-            taskId: taskDoc.id,
-            endpoint: userPrefs.pushSubscription.endpoint
-          });
           const pushResult = await sendPushNotification(task as Task, userPrefs.pushSubscription);
           notificationResults.push(pushResult);
         }
-
-        console.log('✅ Notification results:', {
-          taskId: taskDoc.id,
-          results: notificationResults
-        });
 
         results.push({
           taskId: taskDoc.id,
@@ -449,7 +246,6 @@ export async function GET(req: Request) {
 
         // Update task reminder status
         try {
-          console.log('📝 Updating task reminder status:', taskDoc.id);
           await updateDoc(doc(db, 'tasks', taskDoc.id), {
             reminderSent: true
           });
@@ -460,16 +256,10 @@ export async function GET(req: Request) {
             error: error instanceof Error ? error.message : 'Unknown error'
           });
         }
-      } else {
-        console.log('⏳ Skipping notification - not time yet:', {
-          taskId: taskDoc.id,
-          scheduledFor: `${notificationHour}`,
-          currentTime: `${currentHour}:${currentMinute}`
-        });
       }
     }
 
-    console.log('🏁 POST request completed:', {
+    console.log('🏁 Process completed:', {
       tasksProcessed: tasksSnapshot.size,
       notificationsSent: results.length
     });
@@ -495,6 +285,133 @@ export async function GET(req: Request) {
   }
 }
 
+export async function GET() {
+  console.log('🔄 GET request received');
+
+  try {
+    // Query all tasks that haven't sent reminders yet
+    const tasksQuery = query(
+      collection(db, 'tasks'),
+      where('reminderSent', '==', false)
+    );
+
+    const tasksSnapshot = await getDocs(tasksQuery);
+    console.log('📊 Found tasks:', {
+      count: tasksSnapshot.size,
+      taskIds: tasksSnapshot.docs.map(doc => doc.id)
+    });
+
+    const results = [];
+    for (const taskDoc of tasksSnapshot.docs) {
+      const task = taskDoc.data();
+      const userId = task.userId;
+
+      // Get user preferences for this specific task
+      const userPrefsDoc = await getDoc(doc(db, 'userPreferences', userId));
+      if (!userPrefsDoc.exists()) {
+        console.log('⚠️ Skipping task - no user preferences:', { taskId: taskDoc.id, userId });
+        continue;
+      }
+
+      const userPrefs = userPrefsDoc.data();
+      const userTimezone = userPrefs.timezone || 'UTC'; // Fallback to UTC if no timezone set
+
+      // Get time in user's timezone
+      const userTime = getUserLocalTime(userTimezone);
+      const currentHour = userTime.hour;
+      const currentMinute = userTime.minute;
+      const userDate = userTime.date;
+
+      // Skip if task date doesn't match user's current date
+      if (task.date !== userDate) {
+        console.log('⏭️ Skipping task - different date:', {
+          taskId: taskDoc.id,
+          taskDate: task.date,
+          userDate
+        });
+        continue;
+      }
+
+      console.log('📝 Processing task:', {
+        taskId: taskDoc.id,
+        activity: task.activity,
+        startTime: task.startTime,
+        userTimezone,
+        userLocalTime: `${currentHour}:${currentMinute}`
+      });
+
+      // Calculate notification time
+      const notificationHour = task.startTime - 1;
+      const notificationMinute = 60 - (userPrefs.reminderTime || 10);
+
+      if (currentHour === notificationHour && currentMinute === notificationMinute) {
+        console.log('🔔 Sending notifications for task:', taskDoc.id);
+
+        const notificationResults = [];
+
+        // Email notification
+        if (userPrefs.emailReminders && userPrefs.email) {
+          const emailResult = await sendEmailNotification(task as Task, userPrefs.email);
+          notificationResults.push(emailResult);
+        }
+
+        // SMS notification
+        if (userPrefs.smsReminders && userPrefs.phoneNumber) {
+          const smsResult = await sendSMSNotification(task as Task, userPrefs.phoneNumber);
+          notificationResults.push(smsResult);
+        }
+
+        // Push notification
+        if (userPrefs.pushReminders && userPrefs.pushSubscription) {
+          const pushResult = await sendPushNotification(task as Task, userPrefs.pushSubscription);
+          notificationResults.push(pushResult);
+        }
+
+        results.push({
+          taskId: taskDoc.id,
+          notifications: notificationResults
+        });
+
+        // Update task reminder status
+        try {
+          await updateDoc(doc(db, 'tasks', taskDoc.id), {
+            reminderSent: true
+          });
+          console.log('✅ Task reminder status updated:', taskDoc.id);
+        } catch (error) {
+          console.error('❌ Failed to update task reminder status:', {
+            taskId: taskDoc.id,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+    }
+
+    console.log('🏁 Process completed:', {
+      tasksProcessed: tasksSnapshot.size,
+      notificationsSent: results.length
+    });
+
+    return new Response(JSON.stringify({ success: true, results }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('💥 Critical error in POST handler:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
+    return new Response(JSON.stringify({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
 export async function PUT() {
   return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
 }
