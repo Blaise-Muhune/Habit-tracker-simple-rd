@@ -1052,8 +1052,18 @@ export default function DailyTaskManager() {
                       className="w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 border-blue-500"
                     />
                     <span className="text-xs sm:text-sm font-medium hidden sm:inline">
-                      {user.displayName?.split(' ')[0]}
+                      {user.displayName?.split(' ')[0]} 
                     </span>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path 
+                        d="M6 9L12 15L18 9" 
+                        fill="currentColor"
+                        stroke="currentColor" 
+                        stroke-width="2" 
+                        stroke-linecap="round" 
+                        stroke-linejoin="round"
+                      />
+                    </svg>
                     {isPremiumUser && (
                       <span className={`text-xs px-2 py-0.5 rounded-full
                         ${theme === 'dark' 
@@ -1068,9 +1078,9 @@ export default function DailyTaskManager() {
 
                   {/* Updated Dropdown Menu - Added button-like styling */}
                   <div className={`
-                    absolute left-0 sm:right-auto mt-2 w-48 py-2 rounded-xl shadow-lg 
+                    absolute right-0 sm:right-auto mt-2 w-48 py-2 rounded-xl shadow-lg 
                     opacity-0 invisible group-hover:opacity-100 group-hover:visible 
-                    transition-all duration-200 z-10
+                    transition-all duration-200 z-10 
                     ${theme === 'dark' 
                       ? 'bg-slate-800 border border-slate-700' 
                       : 'bg-white border border-slate-200'
