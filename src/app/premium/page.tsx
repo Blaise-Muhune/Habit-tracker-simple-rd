@@ -66,8 +66,11 @@ const PremiumPage = () => {
 
   const handleUpgrade = async () => {
     if (!user) {
-      showToast('Please sign in to upgrade', 'info')
+      router.push('/signin')
       return
+    } else {
+      showToast('let me check your premium status...', 'info')
+      
     }
 
     setIsLoading(true)
@@ -79,9 +82,9 @@ const PremiumPage = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: user.uid,
+          userId: user?.uid,
           plan: selectedPlan,
-          email: user.email,
+          email: user?.email,
         }),
       })
 

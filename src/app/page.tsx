@@ -367,12 +367,21 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     if (isStartTimePickerOpen && editingTask?.startTime !== undefined) {
       const timeElement = document.getElementById(`start-time-${editingTask.startTime}`)
       if (timeElement) {
-        timeElement.scrollIntoView({ behavior: 'auto', block: 'center' })
+        timeElement.scrollIntoView({ behavior: 'auto', block: 'start' })
       }
     }
   }, [isStartTimePickerOpen, editingTask?.startTime])
 
- 
+  useEffect(() => {
+    if (!showTomorrow && !isLoading) {
+      const currentHourElement = document.getElementById(`hour-${currentHour}`)
+      if (currentHourElement) {
+        setTimeout(() => {
+          currentHourElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 500) // Small delay to ensure elements are rendered
+      }
+    }
+  }, [showTomorrow, isLoading, currentHour])
 
   const PremiumUpgradePrompt = () => (
     <div className={`
@@ -437,7 +446,32 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     }, [isStartTimePickerOpen, isEndTimePickerOpen]);
   
   
-  
+   // Add this function to reset all state
+   const resetState = () => {
+    setTodayTasks([])
+    setTomorrowTasks([])
+    setShowTomorrow(false)
+    setIsCombineMode(false)
+    setSelectionStart(null)
+    setSelectionEnd(null)
+    setEditingTask(null)
+    setShowTaskModal(false)
+    setShowFullSchedule(false)
+    setShowDetailPopup(false)
+    setSuggestions([])
+    setIsLoadingSuggestions(false)
+    setIsStartTimePickerOpen(false)
+    setIsEndTimePickerOpen(false)
+    setIsSuggestionsExpanded(false)
+    setIsPremiumUser(false)
+    setToast(null)
+    setSelectedTask(null)
+    setShowTour(false)
+    setTourStep(0)
+    setIsNavigating(false)
+    setTimeBlockView('hour')
+    setTomorrowTimeBlockView('hour')
+  }
   
   // update user timezone
   useEffect(() => {
@@ -457,16 +491,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     return () => clearInterval(timer)
   }, [])
 
- 
-
-  useEffect(() => {
-    if (!showTomorrow) {
-      const currentHourElement = document.getElementById(`hour-${currentHour}`)
-      if (currentHourElement) {
-        currentHourElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
-    }
-  }, [showTomorrow, currentHour])
 
   useEffect(() => {
     if (!user) return
@@ -568,6 +592,19 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         console.error('Error saving tour status:', error)
       }
     }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      resetState()
+      // Optionally show a toast message
+      showToast('Successfully signed out', 'success')
+    } catch (error) {
+      console.error('Error signing out:', error)
+      showToast('Failed to sign out', 'error')
+    }
+    router.push('/signin')
   }
 
   const handleMidnightTransition = async () => {
@@ -1234,7 +1271,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     })
   }
 
-
+  // Add this useEffect for initial scroll to current time
+  
 
   return (
     <div className={`h-screen overflow-auto ${theme === 'dark' 
@@ -1468,7 +1506,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                     
 
                     <button
-                      onClick={logout}
+                      onClick={handleLogout}
                       className={`w-full px-4 py-2 text-sm transition-colors text-left
                         ${theme === 'dark'
                           ? 'text-slate-300 hover:bg-slate-700/70 active:bg-slate-600'
@@ -1490,13 +1528,13 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                   </div>
                 </div>
               ) : (
-                <button
-                  onClick={signInWithGoogle}
+                <Link
+                  href="/signin"
                   className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-medium 
                     bg-blue-600 hover:bg-blue-500 text-white transition-colors"
                 >
                   Sign in
-                </button>
+                </Link>
               )}
 
               <button
@@ -1537,7 +1575,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                       if (!showTomorrow) {
                         const currentHourElement = document.getElementById(`hour-${currentHour}`)
                         if (currentHourElement) {
-                          currentHourElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                          currentHourElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
                         }
                       }
                     }}
@@ -1815,7 +1853,18 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
           {!showTomorrow && !showFullSchedule && (
             <div className="max-w-4xl mx-auto mb-6">
               <button
-                onClick={() => setShowFullSchedule(true)}
+                onClick={() => {
+                  
+                    // setShowTomorrow(false)
+                    if (!showTomorrow) {
+                      const currentHourElement = document.getElementById(`hour-${currentHour}`)
+                      if (currentHourElement) {
+                        currentHourElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      }
+                    }
+                    setShowFullSchedule(true)
+                  }
+                  }
                 className={`
                   w-full p-4 rounded-xl text-left relative overflow-hidden group
                   ${theme === 'dark'
@@ -2179,6 +2228,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                 ) : (
                   <motion.div
                     key={`empty-${timeSlot}`}
+                    id={`hour-${timeSlot}`}  // Add this ID
                     onClick={(e) => {
                       e.preventDefault()
                       if (canModifyTasks()) {
@@ -2341,7 +2391,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                                   // Scroll to the selected time
                                   const timeElement = document.getElementById(`start-time-${option.value}`)
                                   if (timeElement) {
-                                    timeElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                                    timeElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
                                   }
                                 }
                               }}
