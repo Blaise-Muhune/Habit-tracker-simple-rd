@@ -283,7 +283,22 @@ export default function DailyTaskManager() {
     }
   }
 
-
+  const checkAndSendReminder = async (task: Task) => {
+    if (!user?.email || !task.id) {
+      return false;
+    }
+    
+    try {
+      // Only update the reminderSent flag to false to allow the notification API to handle it
+      await updateDoc(doc(db, 'tasks', task.id), {
+        reminderSent: false
+      });
+      return true;
+    } catch (error) {
+      console.error('Error updating reminder status:', error);
+      return false;
+    }
+  };
 
   const PremiumUpgradePrompt = () => (
     <div className={`
@@ -333,7 +348,41 @@ export default function DailyTaskManager() {
     return () => clearInterval(timer)
   }, [])
 
- 
+  useEffect(() => {
+    if (!user?.email) return;
+
+    // Keep track of reminded tasks to prevent duplicates
+    const remindedTasks = new Set();
+
+    const checkAndSendReminderOnce = async (task: Task) => {
+      const now = new Date();
+      const reminderKey = `${task.id}-${now.getHours()}-${now.getMinutes()}`;
+      
+      if (!remindedTasks.has(reminderKey)) {
+        const shouldRemind = await checkAndSendReminder(task);
+        if (shouldRemind) {
+          remindedTasks.add(reminderKey);
+          // Clean up old entries after 2 minutes
+          setTimeout(() => remindedTasks.delete(reminderKey), 120000);
+        }
+      }
+    };
+
+    // Set up the interval to check tasks
+    const reminderInterval = setInterval(() => {
+      const currentTasks = getCurrentTasks();
+      currentTasks.forEach(checkAndSendReminderOnce);
+    }, 60000); // Check every minute
+
+    // Initial check
+    const initialTasks = getCurrentTasks();
+    initialTasks.forEach(checkAndSendReminderOnce);
+
+    return () => {
+      clearInterval(reminderInterval);
+      remindedTasks.clear();
+    };
+  }, [user, getCurrentTasks]);
 
   useEffect(() => {
     if (!showTomorrow) {
@@ -520,6 +569,7 @@ export default function DailyTaskManager() {
     }
 
     try {
+      setIsLoading(true); // Add this line to ensure loading state is set when starting to load
       // Create a query for tasks with today's and tomorrow's dates
       const tasksQuery = query(
         collection(db, 'tasks'),
@@ -532,7 +582,7 @@ export default function DailyTaskManager() {
       
       // Convert the snapshot to Task objects with IDs
       const tasks = tasksSnapshot.docs.map(doc => ({
-        id: doc.id,  // Make sure to include the document ID
+        id: doc.id,
         ...doc.data()
       })) as Task[];
 
@@ -540,16 +590,14 @@ export default function DailyTaskManager() {
       const todayTasksList = tasks.filter(task => task.date === today);
       const tomorrowTasksList = tasks.filter(task => task.date === tomorrow);
 
-      console.log('Loaded tasks:', { today: todayTasksList, tomorrow: tomorrowTasksList });
-
       // Update state
       setTodayTasks(todayTasksList);
       setTomorrowTasks(tomorrowTasksList);
-      setIsLoading(false);
     } catch (error) {
       console.error('Error loading tasks:', error);
-      setIsLoading(false);
       showToast('Failed to load tasks', 'error');
+    } finally {
+      setIsLoading(false); // Move this to finally block to ensure it's always called
     }
   };
 
@@ -557,6 +605,11 @@ export default function DailyTaskManager() {
   useEffect(() => {
     if (user) {
       loadTasks();
+    } else {
+      // Add this else block to set loading to false when there's no user
+      setIsLoading(false);
+      setTodayTasks([]);
+      setTomorrowTasks([]);
     }
   }, [user]); // Only depend on user changes
 
@@ -1164,8 +1217,8 @@ export default function DailyTaskManager() {
                     {/* Sign out button - Updated styling */}
                     <button
                       onClick={() => {
-                        fetch('/api/notifications', {
-                          method: 'POST',
+                        fetch('api/notifications', {
+                          method: 'GET',
                         })
                       }}
                       className={`w-full px-4 py-2 text-sm transition-colors text-left

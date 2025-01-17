@@ -19,8 +19,8 @@ webpush.setVapidDetails(
 
 async function sendEmailNotification(task: Task, email: string) {
   try {
-    // Use relative URL and let fetch resolve it based on the current environment
-    const response = await fetch('/api/send-reminder', {
+    // Call your email endpoint
+    const response = await fetch(new URL('/api/send-reminder', 'https://simple-r.vercel.app').toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -54,8 +54,8 @@ async function sendEmailNotification(task: Task, email: string) {
 
 async function sendSMSNotification(task: Task, phoneNumber: string) {
   try {
-    // Use relative URL and let fetch resolve it based on the current environment
-    const response = await fetch('/api/send-sms', {
+    // Call your SMS endpoint
+    const response = await fetch(new URL('/api/send-sms', 'https://simple-r.vercel.app').toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -129,129 +129,103 @@ async function sendPushNotification(task: Task, pushSubscription: webpush.PushSu
   }
 }
 
-export async function GET(req: Request) {
-  console.log(req.body,'GET request received');
-
+async function processNotifications() {
   const now = new Date();
-  const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
+  const currentHour = now.getHours();
 
-  console.log('🔔 Starting notification check at:', new Date().toISOString());
-  console.log('Current hour/minute:', { currentHour, currentMinute });
+  // Get all tasks for today
+  const tasksRef = collection(db, 'tasks');
+  const q = query(
+    tasksRef,
+    where('reminderSent', '==', false),
+    where('date', '==', now.toISOString().split('T')[0])
+  );
+  
+  const tasksSnapshot = await getDocs(q);
+  const notifications: { success: boolean; type: string; recipient: string; error?: string }[] = [];
 
-  try {
-    // Get all tasks for today
-    const tasksRef = collection(db, 'tasks');
-    const q = query(
-      tasksRef,
-      where('reminderSent', '==', false),
-      where('date', '==', now.toISOString().split('T')[0])
-    );
+  for (const taskDoc of tasksSnapshot.docs) {
+    const task = taskDoc.data();
+    const userPrefsRef = collection(db, 'userPreferences');
+    const userPrefsSnap = await getDocs(query(userPrefsRef, where('userId', '==', task.userId)));
     
-    const tasksSnapshot = await getDocs(q);
-    console.log(`📋 Found ${tasksSnapshot.size} tasks for today`);
-    const notifications: { success: boolean; type: string; recipient: string; error?: string }[] = [];
+    if (userPrefsSnap.empty) continue;
+    const userPrefsData = userPrefsSnap.docs[0].data();
 
-    for (const taskDoc of tasksSnapshot.docs) {
-      const task = taskDoc.data();
-      console.log('Processing task:', { 
-        activity: task.activity, 
-        startTime: task.startTime,
-        userId: task.userId 
-      });
-
-      const userPrefsRef = collection(db, 'userPreferences');
-      const userPrefsSnap = await getDocs(query(userPrefsRef, where('userId', '==', task.userId)));
-      
-      if (userPrefsSnap.empty) continue;
-      const userPrefsData = userPrefsSnap.docs[0].data();
-
-      // Calculate notification time
-      const taskHour = task.startTime;
-      const reminderMinutes = userPrefsData.reminderTime || 10;
-      
-      let notificationHour = taskHour;
-      let notificationMinute = 0;
-      
-      if (reminderMinutes >= 60) {
-        notificationHour = taskHour - Math.floor(reminderMinutes / 60);
-        notificationMinute = 60 - (reminderMinutes % 60);
+    // Calculate notification time
+    const taskHour = task.startTime;
+    const reminderMinutes = userPrefsData.reminderTime || 10;
+    
+    let notificationHour = taskHour;
+    let notificationMinute = 0;
+    
+    if (reminderMinutes >= 60) {
+      notificationHour = taskHour - Math.floor(reminderMinutes / 60);
+      notificationMinute = 60 - (reminderMinutes % 60);
+    } else {
+      notificationMinute = 60 - reminderMinutes;
+      if (notificationMinute === 60) {
+        notificationMinute = 0;
       } else {
-        notificationMinute = 60 - reminderMinutes;
-        if (notificationMinute === 60) {
-          notificationMinute = 0;
-        } else {
-          notificationHour = notificationHour - 1;
-        }
-      }
-
-      console.log('Calculated notification time:', { 
-        notificationHour, 
-        notificationMinute,
-        reminderMinutes 
-      });
-
-      // Check if it's time to send notification
-      if (currentHour === notificationHour && currentMinute === notificationMinute) {
-        console.log('🚀 Sending notifications for task:', task.activity);
-        
-        const notificationPromises = [];
-
-        if (userPrefsData.emailReminders) {
-          notificationPromises.push(
-            sendEmailNotification(task as Task, userPrefsData.email)
-          );
-        }
-        
-        if (userPrefsData.smsReminders && userPrefsData.phoneNumber) {
-          notificationPromises.push(
-            sendSMSNotification(task as Task, userPrefsData.phoneNumber)
-          );
-        }
-
-        // Add push notification if enabled
-        if (userPrefsData.pushReminders && userPrefsData.pushSubscription) {
-          notificationPromises.push(
-            sendPushNotification(task as Task, userPrefsData.pushSubscription)
-          );
-        }
-
-        console.log('Notification channels enabled:', {
-          email: userPrefsData.emailReminders,
-          sms: userPrefsData.smsReminders && userPrefsData.phoneNumber,
-          push: userPrefsData.pushReminders && userPrefsData.pushSubscription
-        });
-
-        // Wait for all notifications to be sent
-        const results = await Promise.all(notificationPromises);
-        console.log('Notification results:', results);
-        notifications.push(...results);
-
-        // Check for invalid push subscriptions
-        const invalidPushSubscription = results.find(
-          result => result.type === 'push' && result.error === 'SUBSCRIPTION_INVALID'
-        );
-
-        // Update task and potentially user preferences
-        const updates: Partial<Task> = { 
-          reminderSent: true,
-          lastUpdated: Timestamp.now().toDate().getTime()
-        };
-
-        await updateDoc(taskDoc.ref, updates);
-
-        // If push subscription is invalid, update user preferences
-        if (invalidPushSubscription) {
-          await updateDoc(userPrefsSnap.docs[0].ref, {
-            pushReminders: false,
-            pushSubscription: null
-          });
-        }
-      } else {
-        console.log('⏳ Not time yet for notification');
+        notificationHour = notificationHour - 1;
       }
     }
-    
+
+    // Check if it's time to send notification
+    if (currentHour === notificationHour && currentMinute === notificationMinute) {
+      const notificationPromises = [];
+
+      if (userPrefsData.emailReminders) {
+        notificationPromises.push(
+          sendEmailNotification(task as Task, userPrefsData.email)
+        );
+      }
+      
+      if (userPrefsData.smsReminders && userPrefsData.phoneNumber) {
+        notificationPromises.push(
+          sendSMSNotification(task as Task, userPrefsData.phoneNumber)
+        );
+      }
+
+      if (userPrefsData.pushReminders && userPrefsData.pushSubscription) {
+        notificationPromises.push(
+          sendPushNotification(task as Task, userPrefsData.pushSubscription)
+        );
+      }
+
+      const results = await Promise.all(notificationPromises);
+      notifications.push(...results);
+
+      const invalidPushSubscription = results.find(
+        result => result.type === 'push' && result.error === 'SUBSCRIPTION_INVALID'
+      );
+
+      const updates: Partial<Task> = { 
+        reminderSent: true,
+        lastUpdated: Timestamp.now().toDate().getTime()
+      };
+
+      await updateDoc(taskDoc.ref, updates);
+
+      if (invalidPushSubscription) {
+        await updateDoc(userPrefsSnap.docs[0].ref, {
+          pushReminders: false,
+          pushSubscription: null
+        });
+      }
+    }
+  }
+
+  return notifications;
+}
+
+export async function GET(req: Request) {
+  console.log(req.body, 'GET request received');
+  console.log('🔔 Starting notification check at:', new Date().toISOString());
+
+  try {
+    const notifications = await processNotifications();
     console.log(`✅ Notification check complete. Sent ${notifications.length} notifications`);
     return NextResponse.json({ 
       success: true, 
@@ -271,102 +245,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  // For manual triggers, perhaps from admin dashboard
-  // You might want to add authentication here
-  console.log(req.body,'POST request received');
-  const now = new Date();
-  const currentMinute = now.getMinutes();
-  const currentHour = now.getHours();
-
+  console.log(req.body, 'POST request received');
+  
   try {
-    // Get all tasks for today
-    const tasksRef = collection(db, 'tasks');
-    const q = query(
-      tasksRef,
-      where('reminderSent', '==', false),
-      where('date', '==', now.toISOString().split('T')[0])
-    );
-    
-    const tasksSnapshot = await getDocs(q);
-    const notifications: { success: boolean; type: string; recipient: string; error?: string }[] = [];
-
-    for (const taskDoc of tasksSnapshot.docs) {
-      const task = taskDoc.data();
-      const userPrefsRef = collection(db, 'userPreferences');
-      const userPrefsSnap = await getDocs(query(userPrefsRef, where('userId', '==', task.userId)));
-      
-      if (userPrefsSnap.empty) continue;
-      const userPrefsData = userPrefsSnap.docs[0].data();
-
-      // Calculate notification time
-      const taskHour = task.startTime;
-      const reminderMinutes = userPrefsData.reminderTime || 10;
-      
-      let notificationHour = taskHour;
-      let notificationMinute = 0;
-      
-      if (reminderMinutes >= 60) {
-        notificationHour = taskHour - Math.floor(reminderMinutes / 60);
-        notificationMinute = 60 - (reminderMinutes % 60);
-      } else {
-        notificationMinute = 60 - reminderMinutes;
-        if (notificationMinute === 60) {
-          notificationMinute = 0;
-        } else {
-          notificationHour = notificationHour - 1;
-        }
-      }
-
-      // Check if it's time to send notification
-      if (currentHour === notificationHour && currentMinute === notificationMinute) {
-        const notificationPromises = [];
-
-        if (userPrefsData.emailReminders) {
-          notificationPromises.push(
-            sendEmailNotification(task as Task, userPrefsData.email)
-          );
-        }
-        
-        if (userPrefsData.smsReminders && userPrefsData.phoneNumber) {
-          notificationPromises.push(
-            sendSMSNotification(task as Task, userPrefsData.phoneNumber)
-          );
-        }
-
-        // Add push notification if enabled
-        if (userPrefsData.pushReminders && userPrefsData.pushSubscription) {
-          notificationPromises.push(
-            sendPushNotification(task as Task, userPrefsData.pushSubscription)
-          );
-        }
-
-        // Wait for all notifications to be sent
-        const results = await Promise.all(notificationPromises);
-        notifications.push(...results);
-
-        // Check for invalid push subscriptions
-        const invalidPushSubscription = results.find(
-          result => result.type === 'push' && result.error === 'SUBSCRIPTION_INVALID'
-        );
-
-        // Update task and potentially user preferences
-        const updates: Partial<Task> = { 
-          reminderSent: true,
-          lastUpdated: Timestamp.now().toDate().getTime()
-        };
-
-        await updateDoc(taskDoc.ref, updates);
-
-        // If push subscription is invalid, update user preferences
-        if (invalidPushSubscription) {
-          await updateDoc(userPrefsSnap.docs[0].ref, {
-            pushReminders: false,
-            pushSubscription: null
-          });
-        }
-      }
-    }
-    
+    const notifications = await processNotifications();
     return NextResponse.json({ 
       success: true, 
       notificationsSent: notifications.length,
