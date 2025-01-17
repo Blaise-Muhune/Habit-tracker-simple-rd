@@ -896,11 +896,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     });
   };
 
-  // Add this helper function to determine if this is the first time slot of a task
-  const isTaskStart = (timeSlot: number) => {
-    const task = getTaskAtHour(timeSlot);
-    return task && task.startTime === timeSlot;
-  };
 
   const isHourSelected = (timeSlot: number) => {
     if (!selectionStart || !selectionEnd) return false
