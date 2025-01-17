@@ -1,9 +1,8 @@
 import { db } from '@/lib/firebase'; // Import regular Firebase client
 import { Task } from '@/types';
-import { collection, query, where, getDocs, updateDoc, Timestamp, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, getDoc, doc } from 'firebase/firestore';
 import { NextResponse } from 'next/server';
 import webpush from 'web-push';
-import { useAuth } from '@/context/AuthContext';
 
 // Set up web-push with your VAPID keys
 const vapidKeys = {
@@ -341,13 +340,11 @@ export async function GET(req: Request) {
 
   try {
     // Parse request body if it exists
-    const { user } = useAuth();
-    const userId = user?.uid;
     const date = new Date().toLocaleDateString('en-CA') ;
-    console.log('🎯 Processing request for:', { userId, date });
+    console.log('🎯 Processing request for:', { date });
 
-    if (!userId || !date) {
-      console.error('❌ Missing required fields:', { userId, date });
+    if (!date) {
+      console.error('❌ Missing required fields:', { date });
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
@@ -364,10 +361,10 @@ export async function GET(req: Request) {
     });
 
     // Query tasks
-    console.log('🔍 Querying tasks for:', { userId, date });
+    console.log('🔍 Querying tasks for:', { date });
     const tasksQuery = query(
       collection(db, 'tasks'),
-      where('userId', '==', userId),
+      // where('userId', '==', userId),
       where('reminderSent', '==', false),
       where('date', '==', date)
     );
@@ -379,11 +376,11 @@ export async function GET(req: Request) {
     });
 
     // Get user preferences
-    console.log('👤 Fetching user preferences for:', userId);
-    const userPrefsDoc = await getDoc(doc(db, 'userPreferences', userId));
+    console.log('👤 Fetching user preferences for:');
+    const userPrefsDoc = await getDoc(doc(db, 'userPreferences', ''));
     
     if (!userPrefsDoc.exists()) {
-      console.error('❌ User preferences not found:', { userId });
+      console.error('❌ User preferences not found:');
       return new Response(JSON.stringify({ error: 'User preferences not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' }
@@ -392,7 +389,6 @@ export async function GET(req: Request) {
 
     const userPrefs = userPrefsDoc.data();
     console.log('⚙️ User preferences:', {
-      userId,
       emailReminders: userPrefs.emailReminders,
       smsReminders: userPrefs.smsReminders,
       pushReminders: userPrefs.pushReminders
