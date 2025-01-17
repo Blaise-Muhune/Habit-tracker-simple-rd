@@ -1013,8 +1013,18 @@ export default function DailyTaskManager() {
   }
 
   // Add this near your other click handlers
-  const handleNotificationCheck = () => {
-    fetch('api/notifications', {
+  const handleNotificationCheck = async () => {
+    // Try multiple methods to get timezone
+    const timezone = 
+      Intl.DateTimeFormat().resolvedOptions().timeZone || 
+      Intl.DateTimeFormat().resolvedOptions().timeZone || 
+      new Date().getTimezoneOffset() !== 0 ? 
+        getTimezoneFromOffset(new Date().getTimezoneOffset()) : 
+        'UTC';
+
+    console.log('Detected timezone:', timezone);
+    
+    const response = await fetch('/api/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1022,10 +1032,19 @@ export default function DailyTaskManager() {
       body: JSON.stringify({
         userId: user?.uid,
         date: new Date().toLocaleDateString('en-CA'),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone // Get user's timezone
+        timezone: timezone || 'UTC' // Fallback to UTC if timezone detection fails
       })
     });
+
+    const data = await response.json();
+    console.log('Notification check response:', data);
   };
+
+  // Helper function to get approximate timezone from offset
+  function getTimezoneFromOffset(offset: number): string {
+    const hours = Math.abs(Math.floor(offset / 60));
+    return `Etc/GMT${offset <= 0 ? '+' : '-'}${hours}`;
+  }
 
   return (
     <div className={`h-screen overflow-auto ${theme === 'dark' 
