@@ -140,49 +140,46 @@ async function sendPushNotification(task: Task, pushSubscription: webpush.PushSu
   }
 }
 
-
+function getUserLocalTime(userTimezone: string) {
+  // Get current UTC time
+  const utcDate = new Date();
+  
+  // Convert to user's timezone
+  const userDate = new Date(utcDate.toLocaleString('en-US', {
+    timeZone: userTimezone
+  }));
+  
+  return {
+    hour: userDate.getHours(),
+    minute: userDate.getMinutes(),
+    date: userDate.toLocaleDateString('en-CA') // YYYY-MM-DD format
+  };
+}
 
 export async function POST(req: Request) {
-  console.log('🔄 POST request received:', {
-    timestamp: new Date().toISOString(),
-    url: req.url,
-    headers: Object.fromEntries(req.headers.entries())
-  });
+  console.log('🔄 POST request received');
 
   try {
-    // Parse request body if it exists
-    let body = null;
-    try {
-      body = await req.json();
-      console.log('📦 Request body:', body);
-    } catch (e) {
-      console.error('⚠️ No JSON body or invalid JSON:', {
-        error: e instanceof Error ? e.message : 'Unknown error'
-      });
-      return new Response(JSON.stringify({ error: 'Invalid request body' }), {
+    const body = await req.json();
+    const { userId, date, timezone } = body; // Add timezone to request body
+    
+    if (!userId || !date || !timezone) {
+      console.error('❌ Missing required fields:', { userId, date, timezone });
+      return new Response(JSON.stringify({ error: 'Missing required fields (userId, date, timezone)' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    const { userId, date } = body;
-    console.log('🎯 Processing request for:', { userId, date });
+    // Get time in user's timezone
+    const userTime = getUserLocalTime(timezone);
+    const currentHour = userTime.hour;
+    const currentMinute = userTime.minute;
 
-    if (!userId || !date) {
-      console.error('❌ Missing required fields:', { userId, date });
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    const now = new Date();
-    const currentMinute = now.getMinutes();
-    const currentHour = now.getHours();
-
-    console.log('⏰ Current time:', {
+    console.log('⏰ User local time:', {
+      timezone,
       currentTime: `${currentHour}:${currentMinute}`,
-      date: now.toISOString()
+      date: userTime.date
     });
 
     // Query tasks
@@ -237,7 +234,8 @@ export async function POST(req: Request) {
         taskId: taskDoc.id,
         notificationHour,
         currentHour,
-        currentMinute
+        currentMinute,
+        notificationMinute
       });
 
       if (currentHour === notificationHour && currentMinute === notificationMinute) {
@@ -334,30 +332,30 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  console.log('🔄 GET request received:', {
-    timestamp: new Date().toISOString(),
-    url: req.url
-  });
+  console.log('🔄 GET request received');
 
   try {
-    const date = new Date().toLocaleDateString('en-CA');
-    console.log('🎯 Processing request for:', { date });
+    // Get timezone from URL params
+    const { searchParams } = new URL(req.url);
+    const timezone = searchParams.get('timezone');
 
-    if (!date) {
-      console.error('❌ Missing required fields:', { date });
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+    if (!timezone) {
+      return new Response(JSON.stringify({ error: 'Missing timezone parameter' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    const now = new Date();
-    const currentMinute = now.getMinutes();
-    const currentHour = now.getHours();
+    // Get time in user's timezone
+    const userTime = getUserLocalTime(timezone);
+    const currentHour = userTime.hour;
+    const currentMinute = userTime.minute;
+    const date = userTime.date;
 
-    console.log('⏰ Current time:', {
+    console.log('⏰ User local time:', {
+      timezone,
       currentTime: `${currentHour}:${currentMinute}`,
-      date: now.toISOString()
+      date
     });
 
     // Query tasks
