@@ -1214,7 +1214,11 @@ export default function DailyTaskManager() {
                     <button
                       onClick={() => {
                         fetch('api/notifications', {
-                          method: 'GET',
+                          method: 'POST',
+                          body: JSON.stringify({
+                            userId: user.uid,
+                            date: new Date().toLocaleDateString('en-CA')
+                          })
                         })
                       }}
                       className={`w-full px-4 py-2 text-sm transition-colors text-left
