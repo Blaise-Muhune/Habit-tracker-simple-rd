@@ -303,7 +303,7 @@ const TaskDetailPopup = ({
 
 export default function DailyTaskManager() {
   const { theme, setTheme } = useTheme()
-  const { user, signInWithGoogle, logout } = useAuth()
+  const { user, logout } = useAuth()
   const [showTomorrow, setShowTomorrow] = useState(false)
   const [todayTasks, setTodayTasks] = useState<Task[]>([])
   const [tomorrowTasks, setTomorrowTasks] = useState<Task[]>([])

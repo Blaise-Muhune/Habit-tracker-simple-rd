@@ -46,16 +46,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithEmail = async (email: string, password: string) => {
     try {
       await signInWithEmailAndPassword(auth, email, password)
-    } catch (error: any) {
-      throw new Error(error.message)
+    } catch (error: unknown) {
+      throw new Error(error instanceof Error ? error.message : 'An unknown error occurred');
     }
   }
 
   const signUpWithEmail = async (email: string, password: string) => {
     try {
       return await createUserWithEmailAndPassword(auth, email, password);
-    } catch (error: any) {
-      throw new Error(error.message);
+    } catch (error: unknown) {
+      throw new Error(error instanceof Error ? error.message : 'An unknown error occurred');
     }
   }
 
