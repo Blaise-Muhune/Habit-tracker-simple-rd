@@ -358,11 +358,14 @@ const PremiumPage = () => {
                   </h2>
                   <div className="text-right">
                     <span className={`text-5xl font-bold ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}>
-                      $90
+                      $7.50
                       <span className={`text-lg ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                        /yr
+                        /mo
                       </span>
                     </span>
+                    <div className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                      $90/year
+                    </div>
                     <div className={`text-sm ${theme === 'dark' ? 'text-green-400' : 'text-green-600'}`}>
                       Save 17%
                     </div>

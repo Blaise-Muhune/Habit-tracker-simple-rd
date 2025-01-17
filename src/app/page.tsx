@@ -1053,7 +1053,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     {
       element: '.tour-header',
       title: 'Welcome to Simple!',
-      description: 'Let me show you around and help you get started with organizing your day.'
+      description: 'Let me show you around and help you get started with organizing your tasks efficiently.'
     },
     // Today/Tomorrow toggle
     {
@@ -1065,31 +1065,31 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     {
       element: '.tour-stats',
       title: 'Track Your Progress',
-      description: 'Monitor your daily progress, completed tasks, and priorities at a glance.'
+      description: 'Monitor your daily progress and completed tasks at a glance.'
     },
     // Timeline - Today view
     {
       element: '.tour-timeline',
       title: 'Your Schedule',
-      description: 'This is your daily timeline. Click any hour to add a new task.'
+      description: 'This is your daily timeline. Click any hour to add a new task, or drag across multiple hours for longer tasks.'
     },
     // Task interaction
     {
       element: '.tour-task',
       title: 'Task Management',
-      description: 'Click on a task to view details. You can mark tasks as complete, set priorities, or modify them.'
+      description: 'Click on any task to view details, edit, mark as complete, or delete it. You can also drag tasks to reschedule them.'
     },
-    // Combine hours feature
+    // AI Suggestions
     {
-      element: '.tour-combine',
-      title: 'Combine Hours',
-      description: 'Create longer tasks by combining multiple hours together.'
+      element: '.tour-ai',
+      title: 'AI Task Suggestions',
+      description: 'Get personalized task suggestions powered by AI to help you plan your day more effectively (Premium feature).'
     },
-    // Tomorrow planning
+    // Premium features
     {
-      element: '.tour-tomorrow',
-      title: 'Plan Tomorrow',
-      description: 'Switch to Tomorrow view to plan ahead and get AI-powered task suggestions.'
+      element: '.tour-premium',
+      title: 'Premium Features',
+      description: 'Upgrade to Premium to unlock AI suggestions, advanced analytics, and more powerful planning tools.'
     },
     // Theme toggle
     {

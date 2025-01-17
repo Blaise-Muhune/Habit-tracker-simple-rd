@@ -29,7 +29,7 @@ async function sendEmailNotification(task: Task, email: string, reminderTime: nu
       body: JSON.stringify({
         to: email,
         subject: `Reminder: ${task.activity}`,
-        text: `Your task "${task.activity}" is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n see more at https://simple-r.vercel.app/`
+        text: `Your task "${task.activity}" is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n want to change reminder type? visit https://simple-r.vercel.app/preferences`
       })
     });
 
@@ -65,7 +65,7 @@ async function sendSMSNotification(task: Task, phoneNumber: string, reminderTime
       },
       body: JSON.stringify({
         to: phoneNumber,
-        message: `Reminder: Your task "${task.activity}" is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n see more at https://simple-r.vercel.app/`,
+        message: `Reminder: Your task "${task.activity}" is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n want to change reminder type? visit https://simple-r.vercel.app/preferences`,
         userId: task.userId // Include userId for premium check
       })
     });
