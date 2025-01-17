@@ -332,15 +332,15 @@ export async function POST(req: Request) {
     });
   }
 }
+
 export async function GET(req: Request) {
   console.log('🔄 GET request received:', {
     timestamp: new Date().toISOString(),
-      url: req.url
+    url: req.url
   });
 
   try {
-    // Parse request body if it exists
-    const date = new Date().toLocaleDateString('en-CA') ;
+    const date = new Date().toLocaleDateString('en-CA');
     console.log('🎯 Processing request for:', { date });
 
     if (!date) {
@@ -364,7 +364,6 @@ export async function GET(req: Request) {
     console.log('🔍 Querying tasks for:', { date });
     const tasksQuery = query(
       collection(db, 'tasks'),
-      // where('userId', '==', userId),
       where('reminderSent', '==', false),
       where('date', '==', date)
     );
@@ -375,28 +374,19 @@ export async function GET(req: Request) {
       taskIds: tasksSnapshot.docs.map(doc => doc.id)
     });
 
-    // Get user preferences
-    console.log('👤 Fetching user preferences for:');
-    const userPrefsDoc = await getDoc(doc(db, 'userPreferences', ''));
-    
-    if (!userPrefsDoc.exists()) {
-      console.error('❌ User preferences not found:');
-      return new Response(JSON.stringify({ error: 'User preferences not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    const userPrefs = userPrefsDoc.data();
-    console.log('⚙️ User preferences:', {
-      emailReminders: userPrefs.emailReminders,
-      smsReminders: userPrefs.smsReminders,
-      pushReminders: userPrefs.pushReminders
-    });
-
     const results = [];
     for (const taskDoc of tasksSnapshot.docs) {
       const task = taskDoc.data();
+      const userId = task.userId;
+
+      // Get user preferences for this specific task
+      const userPrefsDoc = await getDoc(doc(db, 'userPreferences', userId));
+      if (!userPrefsDoc.exists()) {
+        console.log('⚠️ Skipping task - no user preferences:', { taskId: taskDoc.id, userId });
+        continue;
+      }
+
+      const userPrefs = userPrefsDoc.data();
       console.log('📝 Processing task:', {
         taskId: taskDoc.id,
         activity: task.activity,

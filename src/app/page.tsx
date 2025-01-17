@@ -1220,6 +1220,7 @@ export default function DailyTaskManager() {
                             date: new Date().toLocaleDateString('en-CA')
                           })
                         })
+                        // fetch('api/notifications',{method: 'GET'})
                       }}
                       className={`w-full px-4 py-2 text-sm transition-colors text-left
                         ${theme === 'dark'
