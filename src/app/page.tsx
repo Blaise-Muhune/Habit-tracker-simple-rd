@@ -1,6 +1,5 @@
-'use client'
-
-import { useState, useEffect, useCallback } from 'react'
+'use client';
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { format, addDays } from 'date-fns'
 import { motion } from 'framer-motion'
 import { useTheme } from 'next-themes'
@@ -38,10 +37,25 @@ const formatDate = (date: Date) => format(date, 'yyyy-MM-dd')
 const today = formatDate(new Date())
 const tomorrow = formatDate(addDays(new Date(), 1))
 
-const formatTime = (hour: number) => {
-  const period = hour >= 12 ? 'PM' : 'AM'
-  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
-  return `${displayHour.toString().padStart(2, '0')}:00 ${period}`
+
+const formatTime = (time: number) => {
+  const hours = Math.floor(time)
+  const minutes = Math.round((time % 1) * 60)
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
+}
+
+const generateTimeOptions = () => {
+  const options = []
+  for (let hour = 0; hour < 24; hour++) {
+    for (let minute = 0; minute < 60; minute += 15) {
+      const time = hour + (minute / 60)
+      options.push({
+        value: time,
+        label: formatTime(time)
+      })
+    }
+  }
+  return options
 }
 
 const TaskDetailPopup = ({ 
@@ -57,10 +71,27 @@ const TaskDetailPopup = ({
   onClose: () => void
   theme: string
   isEditMode: boolean
-  onModify: () => void
+  onModify: (updatedTask: Task) => void
   onPriorityToggle: () => void
   onDelete: () => void
 }) => {
+  const [isTimePickerOpen, setIsTimePickerOpen] = useState(false)
+  const [selectedStartTime, setSelectedStartTime] = useState(task.startTime)
+  const selectedDuration = task.duration
+  const timeOptions = generateTimeOptions()
+
+  const handleTimeChange = (newStartTime: number) => {
+    setSelectedStartTime(newStartTime)
+    // Update the task with new time
+    onModify({
+      ...task,
+      startTime: newStartTime,
+      duration: selectedDuration
+    })
+  }
+
+  
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <motion.div
@@ -80,10 +111,46 @@ const TaskDetailPopup = ({
         `}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={`px-3 py-1 rounded-full text-sm
-                ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-100'}
-              `}>
-                {formatTime(task.startTime)} - {formatTime(task.startTime + task.duration)}
+              {/* Time Display/Picker */}
+              <div
+                onClick={() => isEditMode && setIsTimePickerOpen(!isTimePickerOpen)}
+                className={`relative px-3 py-1 rounded-full text-sm cursor-pointer
+                  ${theme === 'dark' 
+                    ? isEditMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-800'
+                    : isEditMode ? 'bg-slate-100 hover:bg-slate-200' : 'bg-slate-100'
+                  }
+                `}
+              >
+                {formatTime(selectedStartTime)} - {formatTime(selectedStartTime + selectedDuration)}
+                
+                {/* Time Picker Dropdown */}
+                {isTimePickerOpen && isEditMode && (
+                  <div className={`
+                    absolute top-full left-0 mt-2 p-2 rounded-lg shadow-lg z-50
+                    ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}
+                    max-h-60 overflow-y-auto w-48
+                  `}>
+                    {timeOptions.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => handleTimeChange(option.value)}
+                        className={`
+                          w-full text-left px-3 py-1.5 rounded text-sm
+                          ${selectedStartTime === option.value
+                            ? theme === 'dark'
+                              ? 'bg-blue-500/20 text-blue-400'
+                              : 'bg-blue-100 text-blue-600'
+                            : theme === 'dark'
+                              ? 'text-slate-400 hover:bg-slate-700'
+                              : 'text-slate-600 hover:bg-slate-100'
+                          }
+                        `}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               {task.isPriority && (
                 <span className={`flex items-center gap-1 text-sm
@@ -200,7 +267,7 @@ const TaskDetailPopup = ({
                 <button
                   onClick={() => {
                     onClose()
-                    onModify()
+                    onModify(task)
                   }}
                   className={`px-4 py-2 rounded-lg font-medium
                     ${theme === 'dark'
@@ -252,6 +319,8 @@ export default function DailyTaskManager() {
   const [showDetailPopup, setShowDetailPopup] = useState(false)
   const [suggestions, setSuggestions] = useState<SuggestedTask[]>([])
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+const [isStartTimePickerOpen, setIsStartTimePickerOpen] = useState(false)
+const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   // const [plannedHours, setPlannedHours] = useState(0);
   // const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null)
   // Add this state to manage the collapse state
@@ -268,6 +337,16 @@ export default function DailyTaskManager() {
   const [tourStep, setTourStep] = useState(0)
   // Add this state near your other state declarations
   const [isNavigating, setIsNavigating] = useState(false)
+  // Add new state for time block view preference
+  const [timeBlockView, setTimeBlockView] = useState<'hour' | 'halfHour'>('hour')
+  // Add a new state for tomorrow's view
+  const [tomorrowTimeBlockView, setTomorrowTimeBlockView] = useState<'hour' | 'halfHour'>('hour')
+
+  // Add these refs near your other state declarations
+  const startTimeDropdownRef = useRef<HTMLDivElement>(null);
+  const endTimeDropdownRef = useRef<HTMLDivElement>(null);
+  const startTimeButtonRef = useRef<HTMLButtonElement>(null);
+  const endTimeButtonRef = useRef<HTMLButtonElement>(null);
 
   const router = useRouter()
 
@@ -282,6 +361,16 @@ export default function DailyTaskManager() {
       setTodayTasks(tasks)
     }
   }
+
+  useEffect(() => {
+    // When start time picker opens, scroll to the selected time
+    if (isStartTimePickerOpen && editingTask?.startTime !== undefined) {
+      const timeElement = document.getElementById(`start-time-${editingTask.startTime}`)
+      if (timeElement) {
+        timeElement.scrollIntoView({ behavior: 'auto', block: 'center' })
+      }
+    }
+  }, [isStartTimePickerOpen, editingTask?.startTime])
 
  
 
@@ -318,6 +407,35 @@ export default function DailyTaskManager() {
       </div>
     </div>
   )
+
+    // Add this useEffect to handle click outside
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        // For start time dropdown
+        if (isStartTimePickerOpen && 
+            startTimeDropdownRef.current && 
+            startTimeButtonRef.current && 
+            !startTimeDropdownRef.current.contains(event.target as Node) &&
+            !startTimeButtonRef.current.contains(event.target as Node)) {
+          setIsStartTimePickerOpen(false);
+        }
+        
+        // For end time dropdown
+        if (isEndTimePickerOpen && 
+            endTimeDropdownRef.current && 
+            endTimeButtonRef.current && 
+            !endTimeDropdownRef.current.contains(event.target as Node) &&
+            !endTimeButtonRef.current.contains(event.target as Node)) {
+          setIsEndTimePickerOpen(false);
+        }
+      };
+  
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }, [isStartTimePickerOpen, isEndTimePickerOpen]);
+  
   
   
   
@@ -617,7 +735,58 @@ export default function DailyTaskManager() {
     }
   }, [user]);
 
-  const hours = Array.from({ length: 24 }, (_, i) => i)
+  // First, update the generateTimeOptions function to include all 15-minute intervals
+  const generateTimeOptions = () => {
+    const options = []
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute = 0; minute < 60; minute += 15) {
+        const time = hour + (minute / 60)
+        options.push({
+          value: time,
+          label: formatTime(time)
+        })
+      }
+    }
+    return options
+  }
+
+  // Then update the timeSlots array to include all 15-minute intervals
+  const timeSlots = Array.from({ length: 96 }, (_, i) => i / 4)  // Creates [0, 0.25, 0.5, 0.75, 1, ...]
+
+  const getVisibleHours = () => {
+    const currentTimeBlockView = showTomorrow ? tomorrowTimeBlockView : timeBlockView;
+    
+    // Get all tasks' start times
+    const taskStartTimes = getCurrentTasks().map(task => task.startTime);
+    
+    // Filter time slots based on view type and tasks
+    return timeSlots.filter(timeSlot => {
+      // Always show slots where tasks start
+      const hasTaskStarting = taskStartTimes.includes(timeSlot);
+      
+      // Show slots with ongoing tasks
+      const hasTaskDuring = getTaskAtHour(timeSlot);
+      
+      // Show current hour slot
+      const isCurrentHourSlot = timeSlot === Math.floor(currentHour * 2) / 2;
+      
+      // For hour view, show hour marks
+      const isHourMark = Number.isInteger(timeSlot);
+      
+      // For 30-min view, show half-hour marks
+      const isHalfHourMark = timeSlot % 0.5 === 0;
+      
+      // In tomorrow or full schedule view, show based on view type
+      if (showTomorrow || showFullSchedule) {
+        return currentTimeBlockView === 'hour' 
+          ? isHourMark || hasTaskStarting // Show hour marks and task starts
+          : isHalfHourMark || hasTaskStarting; // Show half-hour marks and task starts
+      }
+      
+      // In today view (not edit mode), only show slots with tasks or current hour
+      return hasTaskStarting || hasTaskDuring || isCurrentHourSlot;
+    }).sort((a, b) => a - b); // Ensure slots are in order
+  };
 
   const saveTask = async (task: Task) => {
     if (!user) return;
@@ -711,57 +880,64 @@ export default function DailyTaskManager() {
     }
   }
 
-  const getTaskAtHour = (hour: number) => {
-    return getCurrentTasks().find(task => 
-      // Check if the hour is either the start time or within the task duration
-      (hour >= task.startTime && hour < (task.startTime + task.duration))
-    )
-  }
+  const getTaskAtHour = (timeSlot: number) => {
+    return getCurrentTasks().find(task => {
+      const taskEnd = task.startTime + task.duration;
+      // Check if the time slot falls within the task's duration
+      return timeSlot >= task.startTime && timeSlot < taskEnd;
+    });
+  };
 
-  const isHourPartOfTask = (hour: number) => {
-    return getCurrentTasks().some(task => 
-      hour > task.startTime && hour <= (task.startTime + task.duration - 1)
-    )
-  }
+  const isHourPartOfTask = (timeSlot: number) => {
+    return getCurrentTasks().some(task => {
+      const taskEnd = task.startTime + task.duration;
+      // Check if the time slot falls within the task's duration, but not at the start
+      return timeSlot > task.startTime && timeSlot < taskEnd;
+    });
+  };
 
-  const isHourSelected = (hour: number) => {
+  // Add this helper function to determine if this is the first time slot of a task
+  const isTaskStart = (timeSlot: number) => {
+    const task = getTaskAtHour(timeSlot);
+    return task && task.startTime === timeSlot;
+  };
+
+  const isHourSelected = (timeSlot: number) => {
     if (!selectionStart || !selectionEnd) return false
     const start = Math.min(selectionStart, selectionEnd)
     const end = Math.max(selectionStart, selectionEnd)
-    return hour >= start && hour <= end
+    return timeSlot >= start && timeSlot <= end
   }
 
   const canModifyTasks = () => showTomorrow || showFullSchedule
 
-  const handleHourClick = (hour: number) => {
+  const handleHourClick = (timeSlot: number) => {
     if (!user) {
       showToast('Please sign in to create tasks', 'info')
       return
     }
 
-    // Allow task creation in Tomorrow's tab or when in edit mode (showFullSchedule)
     if (!showTomorrow && !showFullSchedule) {
       showToast("Switch to edit mode to modify tasks.", 'info')
       return
     }
 
-    // Check if there's already a task at this hour
-    const existingTask = getTaskAtHour(hour)
+    const existingTask = getTaskAtHour(timeSlot)
     if (existingTask) {
       return
     }
 
     if (isCombineMode) {
       if (selectionStart === null) {
-        setSelectionStart(hour)
-        setSelectionEnd(hour)
+        setSelectionStart(timeSlot)
+        setSelectionEnd(timeSlot)
       } else {
-        setSelectionEnd(hour)
+        setSelectionEnd(timeSlot)
       }
     } else {
       const newTask: Task = {
-        startTime: hour,
-        duration: 1,
+        startTime: timeSlot,
+        duration: 0.5, // Default to 30 minutes instead of 1 hour
         activity: '',
         description: '',
         isPriority: false,
@@ -780,11 +956,11 @@ export default function DailyTaskManager() {
     
     const start = Math.min(selectionStart, selectionEnd)
     const end = Math.max(selectionStart, selectionEnd)
-    const duration = end - start + 1
+    const duration = end - start + 0.5 // Add 0.5 to include the last time slot
 
-    // Check for overlapping tasks in the correct date's tasks
+    // Check for overlapping tasks
     const hasOverlap = getCurrentTasks().some(task => {
-      const taskEnd = task.startTime + task.duration - 1
+      const taskEnd = task.startTime + task.duration - 0.5
       return (
         (start >= task.startTime && start <= taskEnd) ||
         (end >= task.startTime && end <= taskEnd) ||
@@ -836,25 +1012,6 @@ export default function DailyTaskManager() {
     console.log('Current date:', showTomorrow ? 'Tomorrow' : 'Today')
     console.log('Tasks:', getCurrentTasks())
   }, [showTomorrow, todayTasks, tomorrowTasks, getCurrentTasks])
-
-
-  // Filter hours to show only those with tasks for Today view
-  const getVisibleHours = () => {
-    if (showTomorrow || showFullSchedule) {
-      return hours
-    }
-    // For Today's view, show hours with tasks AND the current hour
-    return hours.filter(hour => getTaskAtHour(hour) || hour === currentHour)
-  }
-
-
-
-  // useEffect(() => {
-  //   if (tomorrowTasks) {
-      // const totalHours = tomorrowTasks.reduce((total, task) => total + task.duration, 0);
-      // setPlannedHours(totalHours);
-    // }
-  // }, [tomorrowTasks]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type })
@@ -972,6 +1129,7 @@ export default function DailyTaskManager() {
       }
     }
   }
+  
 
   // Add this near your other click handlers
   const handleNotificationCheck = async () => {
@@ -1003,6 +1161,85 @@ export default function DailyTaskManager() {
     const hours = Math.abs(Math.floor(offset / 60));
     return `Etc/GMT${offset <= 0 ? '+' : '-'}${hours}`;
   }
+
+  // Add this helper function for time options
+  // const generateTimeOptions = () => {
+  //   const options = []
+  //   for (let hour = 0; hour < 24; hour++) {
+  //     for (let minute = 0; minute < 60; minute += 15) {
+  //       const time = hour + (minute / 60)
+  //       options.push({
+  //         value: time,
+  //         label: formatTime(time)
+  //       })
+  //     }
+  //   }
+  //   return options
+  // }
+
+  // Add the tomorrow view filter component
+  const TomorrowViewFilter = () => (
+    <div className={`
+      flex items-center gap-2 px-3 py-2 rounded-lg
+      ${theme === 'dark'
+        ? 'bg-slate-800/50 border border-slate-700'
+        : 'bg-white/50 border border-slate-200'
+      }
+    `}>
+      <span className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+        View:
+      </span>
+      <div className="flex gap-1">
+        <button
+          onClick={() => setTomorrowTimeBlockView('hour')}
+          className={`
+            px-3 py-1 rounded text-sm font-medium transition-colors
+            ${tomorrowTimeBlockView === 'hour'
+              ? theme === 'dark'
+                ? 'bg-blue-500/20 text-blue-400'
+                : 'bg-blue-100 text-blue-600'
+              : theme === 'dark'
+                ? 'text-slate-400 hover:text-slate-300'
+                : 'text-slate-600 hover:text-slate-800'
+          }
+        `}
+        >
+          1 Hour
+        </button>
+        <button
+          onClick={() => setTomorrowTimeBlockView('halfHour')}
+          className={`
+            px-3 py-1 rounded text-sm font-medium transition-colors
+            ${tomorrowTimeBlockView === 'halfHour'
+              ? theme === 'dark'
+                ? 'bg-blue-500/20 text-blue-400'
+                : 'bg-blue-100 text-blue-600'
+              : theme === 'dark'
+                ? 'text-slate-400 hover:text-slate-300'
+                : 'text-slate-600 hover:text-slate-800'
+          }
+        `}
+        >
+          30 Min
+        </button>
+      </div>
+    </div>
+  )
+
+  // Add helper function to check for time conflicts
+  const hasTimeConflict = (startTime: number, endTime: number, excludeTaskId?: string) => {
+    return getCurrentTasks().some(task => {
+      if (excludeTaskId && task.id === excludeTaskId) return false
+      const taskEnd = task.startTime + task.duration
+      return (
+        (startTime >= task.startTime && startTime < taskEnd) ||
+        (endTime > task.startTime && endTime <= taskEnd) ||
+        (startTime <= task.startTime && endTime >= taskEnd)
+      )
+    })
+  }
+
+
 
   return (
     <div className={`h-screen overflow-auto ${theme === 'dark' 
@@ -1059,9 +1296,9 @@ export default function DailyTaskManager() {
                         d="M6 9L12 15L18 9" 
                         fill="currentColor"
                         stroke="currentColor" 
-                        stroke-width="2" 
-                        stroke-linecap="round" 
-                        stroke-linejoin="round"
+                        strokeWidth="2" 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round"
                       />
                     </svg>
                     {isPremiumUser && (
@@ -1069,8 +1306,8 @@ export default function DailyTaskManager() {
                         ${theme === 'dark' 
                           ? 'bg-violet-500/20 text-violet-400' 
                           : 'bg-violet-100 text-violet-600'
-                        }`}
-                      >
+                        }
+                      `}>
                         Premium
                       </span>
                     )}
@@ -1227,7 +1464,7 @@ export default function DailyTaskManager() {
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 00-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                           />
                         </svg>
                         Check Notifications
@@ -1249,7 +1486,7 @@ export default function DailyTaskManager() {
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 11-6 0v-1m6 0H9"
                           />
                         </svg>
                         Sign Out
@@ -1332,7 +1569,7 @@ export default function DailyTaskManager() {
                         strokeLinecap="round" 
                         strokeLinejoin="round" 
                         strokeWidth={2} 
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" 
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                       />
                     </svg>
                     Today
@@ -1362,7 +1599,7 @@ export default function DailyTaskManager() {
                         strokeLinecap="round" 
                         strokeLinejoin="round" 
                         strokeWidth={2} 
-                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" 
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                       />
                     </svg>
                     Plan Tomorrow
@@ -1373,6 +1610,7 @@ export default function DailyTaskManager() {
                         animate-ping
                         ${theme === 'dark' ? 'bg-violet-400' : 'bg-violet-500'}
                       `} />
+
                     )}
                   </button>
                   {/* Add this near your other main navigation buttons */}
@@ -1405,7 +1643,7 @@ export default function DailyTaskManager() {
                               strokeLinejoin="round" 
                               strokeWidth={2} 
                               d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                              />
+                            />
                           </svg>
                           <span className="hidden sm:inline">
                             {isPremiumUser ? 'View Analytics' : 'Analytics'}
@@ -1431,6 +1669,7 @@ export default function DailyTaskManager() {
 
               {showTomorrow ? (
                 <>
+                
                   {/* Priority Tasks */}
                   <div className="flex items-center gap-3">
                     <div className={`w-12 h-12 rounded-lg flex items-center justify-center
@@ -1552,6 +1791,7 @@ export default function DailyTaskManager() {
             <>
               {/* AI Suggestions Section */}
               {isPremiumUser ? (
+                <>
                 <AITaskSuggestions
                   theme={theme || 'light'}
                   isPremiumUser={isPremiumUser}
@@ -1567,6 +1807,9 @@ export default function DailyTaskManager() {
                   setSuggestions={setSuggestions}
                   user={user as User}
                 />
+                <TomorrowViewFilter />
+                </>
+
               ) : (
                 <PremiumUpgradePrompt />
               )}
@@ -1661,34 +1904,83 @@ export default function DailyTaskManager() {
                 }
               `}>
                 <div className="flex justify-between items-center">
-                  <div 
-                    onClick={() => setShowFullSchedule(false)}
-                    className={`
-                      inline-flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer
-                      transition-colors duration-200
-                      ${theme === 'dark'
-                        ? 'bg-violet-500/20 border border-violet-500/10 hover:bg-violet-500/30'
-                        : 'bg-violet-50 border border-violet-100 hover:bg-violet-100'
-                      }
-                    `}
-                  >
-                    <span className={`
-                      text-sm font-medium
-                      ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}
-                    `}>
-                      Edit Mode Active
-                    </span>
-                    <div className={`w-2 h-2 rounded-full animate-pulse
-                      ${theme === 'dark' ? 'bg-violet-400' : 'bg-violet-500'}
-                    `} />
-                    <svg 
-                      className={`w-4 h-4 ml-2 ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`} 
-                      fill="none" 
-                      viewBox="0 0 24 24" 
-                      stroke="currentColor"
+                  <div className="flex items-center gap-4">
+                    <div 
+                      onClick={() => setShowFullSchedule(false)}
+                      className={`
+                        inline-flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer
+                        transition-colors duration-200
+                        ${theme === 'dark'
+                          ? 'bg-violet-500/20 border border-violet-500/10 hover:bg-violet-500/30'
+                          : 'bg-violet-50 border border-violet-100 hover:bg-violet-100'
+                        }
+                      `}
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                      <span className={`
+                        text-sm font-medium
+                        ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}
+                      `}>
+                        Edit Mode Active
+                      </span>
+                      <div className={`w-2 h-2 rounded-full animate-pulse
+                        ${theme === 'dark' ? 'bg-violet-400' : 'bg-violet-500'}
+                      `} />
+                      <svg 
+                        className={`w-4 h-4 ml-2 ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`} 
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </div>
+
+                    {/* Time Block View Filter */}
+                    <div className={`
+                      flex items-center gap-2 px-3 py-2 rounded-lg
+                      ${theme === 'dark'
+                        ? 'bg-slate-800/50 border border-slate-700'
+                        : 'bg-white/50 border border-slate-200'
+                      }
+                    `}>
+                      <span className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                        View:
+                      </span>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setTimeBlockView('hour')}
+                          className={`
+                            px-3 py-1 rounded text-sm font-medium transition-colors
+                            ${timeBlockView === 'hour'
+                              ? theme === 'dark'
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : 'bg-blue-100 text-blue-600'
+                              : theme === 'dark'
+                                ? 'text-slate-400 hover:text-slate-300'
+                                : 'text-slate-600 hover:text-slate-800'
+                            }
+                          `}
+                        >
+                          1 Hour
+                        </button>
+                        <button
+                          onClick={() => setTimeBlockView('halfHour')}
+                          className={`
+                            px-3 py-1 rounded text-sm font-medium transition-colors
+                            ${timeBlockView === 'halfHour'
+                              ? theme === 'dark'
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : 'bg-blue-100 text-blue-600'
+                              : theme === 'dark'
+                                ? 'text-slate-400 hover:text-slate-300'
+                                : 'text-slate-600 hover:text-slate-800'
+                            }
+                          `}
+                        >
+                          30 Min
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1696,17 +1988,18 @@ export default function DailyTaskManager() {
 
             {/* Your existing tasks grid */}
             <div className="space-y-2 tour-timeline">
-              {getVisibleHours().map((hour) => {
-                const task = getTaskAtHour(hour)
-                const isCurrentHour = !showTomorrow && hour === currentHour
-                const isPastHour = !showTomorrow && hour < currentHour
+              {getVisibleHours().map((timeSlot) => {
+                const task = getTaskAtHour(timeSlot)
+                const isCurrentTimeSlot = !showTomorrow && timeSlot === Math.floor(currentHour * 2) / 2
+                const isPastTimeSlot = !showTomorrow && timeSlot < currentHour
 
-                // Skip rendering if this hour is part of a task but not the start hour
-                if (isHourPartOfTask(hour)) return null
+                if (isHourPartOfTask(timeSlot)) return null
 
                 return task ? (
                   <motion.div 
-                    key={hour}
+                    key={timeSlot}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
                     onClick={(e) => {
                       if (!(e.target as HTMLElement).closest('button')) {
                         handleTaskClick(task);
@@ -1715,9 +2008,9 @@ export default function DailyTaskManager() {
                     className={`
                       group relative rounded-xl border-2 backdrop-blur-sm
                       transition-all duration-300 hover:scale-[1.02] cursor-pointer
-                      ${task.completed ? 'opacity-50' : isPastHour ? 'opacity-50' : ''}
+                      ${task.completed ? 'opacity-50' : isPastTimeSlot ? 'opacity-50' : ''}
                       ${(!showTomorrow && (
-                        isCurrentHour || 
+                        isCurrentTimeSlot || 
                         (currentHour >= task.startTime && currentHour < (task.startTime + task.duration))
                       )) ? 'ring-2 ring-offset-2 ring-red-500 ring-offset-black' : ''}
                       ${task.isPriority
@@ -1738,9 +2031,10 @@ export default function DailyTaskManager() {
                     <div className="pl-12 sm:pl-20 pr-12 py-2 sm:py-3 min-h-full flex flex-col relative">
                       {/* Time and completion status */}
                       <div className="flex items-center justify-between gap-2 mb-2">
+                        
                         <div className="flex items-center gap-2">
                           <div className={`text-xs sm:text-sm font-medium whitespace-nowrap
-                            ${isCurrentHour 
+                            ${isCurrentTimeSlot 
                               ? theme === 'dark' ? 'text-red-400' : 'text-red-600'
                               : theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
                             }`}
@@ -1889,22 +2183,22 @@ export default function DailyTaskManager() {
                   </motion.div>
                 ) : (
                   <motion.div
-                    key={`empty-${hour}`}
+                    key={`empty-${timeSlot}`}
                     onClick={(e) => {
                       e.preventDefault()
                       if (canModifyTasks()) {
-                        handleHourClick(hour)
+                        handleHourClick(timeSlot)
                       }
                     }}
                     className={`
-                      h-12 sm:h-14 flex items-center pl-12 sm:pl-20 rounded-xl border-2 
+                      h-8 sm:h-10 flex items-center pl-12 sm:pl-20 rounded-xl border-2 
                       cursor-${canModifyTasks() ? 'pointer' : 'default'} transition-all duration-300
-                      ${isPastHour ? 'opacity-30' : ''}
-                      ${isCurrentHour 
+                      ${isPastTimeSlot ? 'opacity-30' : ''}
+                      ${isCurrentTimeSlot 
                         ? theme === 'dark'
                           ? 'border-red-500/50 bg-red-500/10 ring-2 ring-offset-2 ring-red-500 ring-offset-black'
                           : 'border-red-200 bg-red-50 ring-2 ring-offset-2 ring-red-500'
-                        : isHourSelected(hour)
+                        : isHourSelected(timeSlot)
                           ? theme === 'dark'
                             ? 'border-blue-500 bg-blue-500/20'
                             : 'border-blue-500 bg-blue-50'
@@ -1916,42 +2210,34 @@ export default function DailyTaskManager() {
                     whileHover={{ scale: canModifyTasks() ? 1.02 : 1 }}
                   >
                     <div className="flex items-center gap-2">
-                        <span className={`
-                        text-xs sm:text-sm font-medium
-                        ${isCurrentHour
-                          ? theme === 'dark' ? 'text-red-400' : 'text-red-600'
-                          : isHourSelected(hour)
-                            ? 'text-blue-400'
-                            : ''
-                        }
-                      `}>
-                        {formatTime(hour)}
-                      </span>
-                      {isCurrentHour && (
-                        <div className="flex items-center gap-2">
-                          <span className={`
-                            text-xs px-2 py-0.5 rounded-full animate-pulse
-                          ${theme === 'dark' 
-                              ? 'bg-red-500/20 text-red-400' 
-                              : 'bg-red-50 text-red-600'
-                            }
-                          `}>
-                            Now
-                          </span>
-                          {/* Add "Next Task" indicator if applicable */}
-                          {!showTomorrow && !task && (
+                        <span className={`text-xs sm:text-sm font-medium`}>
+                          {formatTime(timeSlot)}
+                        </span>
+                        {isCurrentTimeSlot && (
+                          <div className="flex items-center gap-2">
                             <span className={`
-                              text-xs
-                              ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
-                            `}>
-                              {getNextTask(hour)
-                                ? `Next: ${getNextTask(hour)?.activity} at ${formatTime(getNextTask(hour)?.startTime || 0)}`
-                                : 'No upcoming tasks'
+                              text-xs px-2 py-0.5 rounded-full animate-pulse
+                            ${theme === 'dark' 
+                                ? 'bg-red-500/20 text-red-400' 
+                                : 'bg-red-50 text-red-600'
                               }
+                            `}>
+                              Now
                             </span>
-                          )}
-                        </div>
-                      )}
+                            {/* Add "Next Task" indicator if applicable */}
+                            {!showTomorrow && !task && (
+                              <span className={`
+                                text-xs
+                                ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
+                              `}>
+                                {getNextTask(timeSlot)
+                                  ? `Next: ${getNextTask(timeSlot)?.activity} at ${formatTime(getNextTask(timeSlot)?.startTime || 0)}`
+                                  : 'No upcoming tasks'
+                                }
+                              </span>
+                            )}
+                          </div>
+                        )}
                     </div>
                   </motion.div>
                 )}
@@ -1968,26 +2254,224 @@ export default function DailyTaskManager() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className={`w-full max-w-md rounded-2xl p-6 space-y-6
+            className={`w-full max-w-lg rounded-2xl overflow-hidden
               ${theme === 'dark' 
                 ? 'bg-slate-900 border border-slate-800' 
                 : 'bg-white border border-slate-200'
-              }`}
+              }
+            `}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold">
-                {editingTask?.id ? 'Edit Task' : 'New Task'}
-              </h3>
-              <div className={`px-3 py-1 rounded-full text-sm
-                ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-100'}`}
-              >
-                { formatTime(editingTask?.startTime || 0)} - {formatTime((editingTask?.startTime || 0) + (editingTask?.duration || 0))}
+            <div className={`px-6 py-4 border-b
+              ${theme === 'dark' ? 'border-slate-800' : 'border-slate-200'}
+            `}>
+              <div className="flex items-center justify-between">
+                <h2 className={`text-lg font-semibold
+                  ${theme === 'dark' ? 'text-white' : 'text-slate-900'}
+                `}>
+                  {editingTask.id ? 'Edit Task' : 'New Task'}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowTaskModal(false)
+                    setEditingTask(null)
+                    setIsStartTimePickerOpen(false)  // Close time pickers
+                    setIsEndTimePickerOpen(false)
+                  }}
+                  className={`p-2 rounded-lg hover:bg-slate-800/50 transition-colors
+                    ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
+                  `}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             </div>
 
             {/* Task Form */}
-            <div className="space-y-4">
+            <div className="p-6 space-y-6">
+              {/* Time Selection */}
+              <div className="space-y-2">
+                <label className={`block text-sm font-medium
+                  ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
+                `}>
+                  Time
+                </label>
+                <div className="flex items-center gap-3">
+                  {/* Start Time Dropdown */}
+                  <div className="relative flex-1">
+                    <button
+                      ref={startTimeButtonRef}
+                      onClick={() => setIsStartTimePickerOpen(!isStartTimePickerOpen)}
+                      className={`w-full px-3 py-2 text-left rounded-lg text-sm
+                        ${theme === 'dark'
+                          ? 'bg-slate-800 hover:bg-slate-700'
+                          : 'bg-slate-100 hover:bg-slate-200'
+                        }
+                      `}
+                    >
+                      {formatTime(editingTask.startTime)}
+                    </button>
+                    
+                    {isStartTimePickerOpen && (
+                      <div 
+                        ref={startTimeDropdownRef}
+                        className={`
+                          absolute top-full left-0 mt-1 w-48 max-h-60 overflow-y-auto
+                          rounded-lg shadow-lg z-50
+                          ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}
+                        `}
+                      >
+                        {generateTimeOptions().map(option => {
+                          const endTime = editingTask.startTime + editingTask.duration;
+                          const wouldConflict = hasTimeConflict(
+                            option.value, 
+                            endTime,
+                            editingTask.id
+                          )
+                          
+                          return (
+                            <button
+                              key={option.value}
+                              id={`start-time-${option.value}`} // Add this ID
+                              onClick={() => {
+                                if (!wouldConflict) {
+                                  setEditingTask({
+                                    ...editingTask,
+                                    startTime: option.value,
+                                    duration: endTime - option.value
+                                  })
+                                  setIsStartTimePickerOpen(false)
+                                  // Scroll to the selected time
+                                  const timeElement = document.getElementById(`start-time-${option.value}`)
+                                  if (timeElement) {
+                                    timeElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                                  }
+                                }
+                              }}
+                              className={`
+                                w-full text-left px-3 py-1.5 text-sm
+                                ${wouldConflict 
+                                  ? theme === 'dark'
+                                    ? 'bg-red-500/10 text-red-400 cursor-not-allowed'
+                                    : 'bg-red-50 text-red-600 cursor-not-allowed'
+                                  : editingTask.startTime === option.value
+                                    ? theme === 'dark'
+                                      ? 'bg-blue-500/20 text-blue-400'
+                                      : 'bg-blue-100 text-blue-600'
+                                    : theme === 'dark'
+                                      ? 'text-slate-400 hover:bg-slate-700'
+                                      : 'text-slate-600 hover:bg-slate-100'
+                                }
+                              `}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span>{option.label}</span>
+                                {wouldConflict && (
+                                  <span className="text-xs">
+                                    Conflict
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <span className={theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}>to</span>
+
+                  {/* End Time Dropdown */}
+                  <div className="relative flex-1">
+                    <button
+                      ref={endTimeButtonRef}
+                      onClick={() => setIsEndTimePickerOpen(!isEndTimePickerOpen)}
+                      className={`w-full px-3 py-2 text-left rounded-lg text-sm
+                        ${theme === 'dark'
+                          ? 'bg-slate-800 hover:bg-slate-700'
+                          : 'bg-slate-100 hover:bg-slate-200'
+                        }
+                      `}
+                    >
+                      {formatTime(editingTask.startTime + editingTask.duration)}
+                    </button>
+                    
+                    {isEndTimePickerOpen && (
+                      <div 
+                        ref={endTimeDropdownRef}
+                        className={`
+                          absolute top-full left-0 mt-1 w-48 max-h-60 overflow-y-auto
+                          rounded-lg shadow-lg z-50
+                          ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'}
+                        `}
+                      >
+                        {generateTimeOptions()
+                          .filter(option => option.value > editingTask.startTime)
+                          .map(option => {
+                            const wouldConflict = hasTimeConflict(
+                              editingTask.startTime, 
+                              option.value,
+                              editingTask.id
+                            )
+                            
+                            return (
+                              <button
+                                key={option.value}
+                                data-time={option.value}  // Add data attribute for scrolling
+                                onClick={() => {
+                                  if (!wouldConflict) {
+                                    setEditingTask({
+                                      ...editingTask,
+                                      duration: option.value - editingTask.startTime
+                                    })
+                                    setIsEndTimePickerOpen(false)
+                                  }
+                                }}
+                                className={`
+                                  w-full text-left px-3 py-1.5 text-sm
+                                  ${wouldConflict 
+                                    ? theme === 'dark'
+                                      ? 'bg-red-500/10 text-red-400 cursor-not-allowed'
+                                      : 'bg-red-50 text-red-600 cursor-not-allowed'
+                                    : (editingTask.startTime + editingTask.duration) === option.value
+                                      ? theme === 'dark'
+                                        ? 'bg-blue-500/20 text-blue-400'
+                                        : 'bg-blue-100 text-blue-600'
+                                      : theme === 'dark'
+                                        ? 'text-slate-400 hover:bg-slate-700'
+                                        : 'text-slate-600 hover:bg-slate-100'
+                                  }
+                                `}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{option.label}</span>
+                                  {wouldConflict && (
+                                    <span className="text-xs">
+                                      Conflict
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                            )
+                          })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Time validation error message */}
+                {editingTask.duration <= 0 && (
+                  <p className={`text-sm mt-1
+                    ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}
+                  `}>
+                    End time must be after start time
+                  </p>
+                )}
+              </div>
+
+              {/* Rest of the form fields */}
               <div>
                 <label className={`block mb-2 text-sm font-medium
                   ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}
@@ -2034,24 +2518,54 @@ export default function DailyTaskManager() {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3 pt-2">
+            <div className="flex justify-end gap-3">
               <button
                 onClick={() => {
                   setShowTaskModal(false)
                   setEditingTask(null)
+                  setIsStartTimePickerOpen(false)  // Close time pickers
+                  setIsEndTimePickerOpen(false)
                 }}
-                className={`flex-1 px-4 py-2.5 rounded-xl font-medium transition-colors
+                className={`px-4 py-2 rounded-lg text-sm font-medium
                   ${theme === 'dark'
-                    ? 'bg-slate-800 hover:bg-slate-700'
-                    : 'bg-slate-100 hover:bg-slate-200'
-                  }`}
+                    ? 'text-slate-400 hover:bg-slate-800'
+                    : 'text-slate-600 hover:bg-slate-100'
+                  }
+                `}
               >
                 Cancel
               </button>
               <button
-                onClick={() => editingTask && saveTask(editingTask)}
-                className="flex-1 px-4 py-2.5 rounded-xl font-medium bg-blue-600 hover:bg-blue-500 
-                  text-white transition-colors"
+                onClick={() => {
+                  saveTask(editingTask)
+                  setIsStartTimePickerOpen(false)  // Close time pickers
+                  setIsEndTimePickerOpen(false)
+                }}
+                disabled={
+                  editingTask.duration <= 0 || 
+                  hasTimeConflict(
+                    editingTask.startTime,
+                    editingTask.startTime + editingTask.duration,
+                    editingTask.id
+                  ) ||
+                  !editingTask.activity.trim()
+                }
+                className={`px-4 py-2 rounded-lg text-sm font-medium
+                  ${editingTask.duration <= 0 || 
+                    hasTimeConflict(
+                      editingTask.startTime,
+                      editingTask.startTime + editingTask.duration,
+                      editingTask.id
+                    ) ||
+                    !editingTask.activity.trim()
+                    ? theme === 'dark'
+                      ? 'bg-blue-500/50 text-blue-300 cursor-not-allowed'
+                      : 'bg-blue-300 text-white cursor-not-allowed'
+                    : theme === 'dark'
+                      ? 'bg-blue-500 text-white hover:bg-blue-400'
+                      : 'bg-blue-600 text-white hover:bg-blue-500'
+                  }
+                `}
               >
                 Save
               </button>
