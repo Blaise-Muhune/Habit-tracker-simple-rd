@@ -1,4 +1,3 @@
-import UserPreferences from '@/components/UserPreferences';
 import { db } from '@/lib/firebase'; // Import regular Firebase client
 import { Task } from '@/types';
 import { collection, query, where, getDocs, updateDoc, getDoc, doc } from 'firebase/firestore';
