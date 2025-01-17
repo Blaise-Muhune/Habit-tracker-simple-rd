@@ -1,3 +1,4 @@
+import UserPreferences from '@/components/UserPreferences';
 import { db } from '@/lib/firebase'; // Import regular Firebase client
 import { Task } from '@/types';
 import { collection, query, where, getDocs, updateDoc, getDoc, doc } from 'firebase/firestore';
@@ -17,7 +18,7 @@ webpush.setVapidDetails(
   vapidKeys.privateKey
 );
 
-async function sendEmailNotification(task: Task, email: string) {
+async function sendEmailNotification(task: Task, email: string, reminderTime: number) {
   console.log('📧 Attempting email notification:', { taskId: task.id, email });
   try {
     // Call your email endpoint
@@ -29,7 +30,7 @@ async function sendEmailNotification(task: Task, email: string) {
       body: JSON.stringify({
         to: email,
         subject: `Reminder: ${task.activity}`,
-        text: `Your task "${task.activity}" is starting soon.${task.description ? `\n\nDetails: ${task.description}` : ''}`
+        text: `Your task "${task.activity}" is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n see more at https://simple-r.vercel.app/`
       })
     });
 
@@ -54,7 +55,7 @@ async function sendEmailNotification(task: Task, email: string) {
   }
 }
 
-async function sendSMSNotification(task: Task, phoneNumber: string) {
+async function sendSMSNotification(task: Task, phoneNumber: string, reminderTime: number) {
   console.log('📱 Attempting SMS notification:', { taskId: task.id, phoneNumber });
   try {
     // Call your SMS endpoint
@@ -65,7 +66,7 @@ async function sendSMSNotification(task: Task, phoneNumber: string) {
       },
       body: JSON.stringify({
         to: phoneNumber,
-        message: `Reminder: Your task "${task.activity}" is starting soon.`,
+        message: `Reminder: Your task "${task.activity}" is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n see more at https://simple-r.vercel.app/`,
         userId: task.userId // Include userId for premium check
       })
     });
@@ -91,14 +92,14 @@ async function sendSMSNotification(task: Task, phoneNumber: string) {
   }
 }
 
-async function sendPushNotification(task: Task, pushSubscription: webpush.PushSubscription) {
+async function sendPushNotification(task: Task, pushSubscription: webpush.PushSubscription, reminderTime: number) {
   console.log('🔔 Attempting push notification:', { taskId: task.id, endpoint: pushSubscription.endpoint });
   try {
     await webpush.sendNotification(
       pushSubscription,
       JSON.stringify({
         title: `Reminder: ${task.activity} starts soon`,
-        body: task.description || `Your task "${task.activity}" is starting soon.`,
+        body: task.description || `Your task "${task.activity}" is starting in ${reminderTime} minutes.`,
         icon: '/icon.png',
         badge: '/badge.png',
         data: {
@@ -223,19 +224,19 @@ export async function POST(request: Request) {
 
         // Email notification
         if (userPrefs.emailReminders && userPrefs.email) {
-          const emailResult = await sendEmailNotification(task as Task, userPrefs.email);
+          const emailResult = await sendEmailNotification(task as Task, userPrefs.email, userPrefs?.reminderTime);
           notificationResults.push(emailResult);
         }
 
         // SMS notification
         if (userPrefs.smsReminders && userPrefs.phoneNumber) {
-          const smsResult = await sendSMSNotification(task as Task, userPrefs.phoneNumber);
+          const smsResult = await sendSMSNotification(task as Task, userPrefs.phoneNumber, userPrefs?.reminderTime);
           notificationResults.push(smsResult);
         }
 
         // Push notification
         if (userPrefs.pushReminders && userPrefs.pushSubscription) {
-          const pushResult = await sendPushNotification(task as Task, userPrefs.pushSubscription);
+          const pushResult = await sendPushNotification(task as Task, userPrefs.pushSubscription, userPrefs?.reminderTime);
           notificationResults.push(pushResult);
         }
 
@@ -351,19 +352,19 @@ export async function GET() {
 
         // Email notification
         if (userPrefs.emailReminders && userPrefs.email) {
-          const emailResult = await sendEmailNotification(task as Task, userPrefs.email);
+          const emailResult = await sendEmailNotification(task as Task, userPrefs.email, userPrefs?.reminderTime);
           notificationResults.push(emailResult);
         }
 
         // SMS notification
         if (userPrefs.smsReminders && userPrefs.phoneNumber) {
-          const smsResult = await sendSMSNotification(task as Task, userPrefs.phoneNumber);
+          const smsResult = await sendSMSNotification(task as Task, userPrefs.phoneNumber, userPrefs?.reminderTime);
           notificationResults.push(smsResult);
         }
 
         // Push notification
         if (userPrefs.pushReminders && userPrefs.pushSubscription) {
-          const pushResult = await sendPushNotification(task as Task, userPrefs.pushSubscription);
+          const pushResult = await sendPushNotification(task as Task, userPrefs.pushSubscription, userPrefs?.reminderTime);
           notificationResults.push(pushResult);
         }
 
