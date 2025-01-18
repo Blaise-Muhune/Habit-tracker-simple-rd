@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { motion } from 'framer-motion';
 import { formatPhoneNumber } from '../../utils/formatPhoneNumber';
@@ -9,23 +9,66 @@ import { doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export default function SignIn() {
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get('returnUrl') || '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const { signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
   const router = useRouter();
   const { theme } = useTheme();
 
+  const validatePassword = (password: string) => {
+    const minLength = 8;
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+
+    if (password.length < minLength) {
+      return 'Password must be at least 8 characters long';
+    }
+    if (!hasUpperCase) {
+      return 'Password must contain at least one uppercase letter';
+    }
+    if (!hasLowerCase) {
+      return 'Password must contain at least one lowercase letter';
+    }
+    if (!hasNumbers) {
+      return 'Password must contain at least one number';
+    }
+    if (!hasSpecialChar) {
+      return 'Password must contain at least one special character';
+    }
+    return '';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setPasswordError('');
     setLoading(true);
 
     try {
       if (isSignUp) {
+        const passwordValidationError = validatePassword(password);
+        if (passwordValidationError) {
+          setPasswordError(passwordValidationError);
+          setLoading(false);
+          return;
+        }
+
+        if (password !== confirmPassword) {
+          setPasswordError('Passwords do not match');
+          setLoading(false);
+          return;
+        }
+
         const userCredential = await signUpWithEmail(email, password);
         const user = userCredential.user;
         if (phoneNumber) {
@@ -44,7 +87,7 @@ export default function SignIn() {
       } else {
         await signInWithEmail(email, password);
       }
-      router.push('/');
+      router.push(returnUrl);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
@@ -55,7 +98,7 @@ export default function SignIn() {
   const handleGoogleSignIn = async () => {
     try {
       await signInWithGoogle();
-      router.push('/');
+      router.push(returnUrl);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     }
@@ -164,16 +207,45 @@ export default function SignIn() {
               type="password"
               placeholder="Password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (isSignUp) {
+                  setPasswordError(validatePassword(e.target.value));
+                }
+              }}
               className={`w-full px-4 py-3 rounded-xl outline-none transition-colors
                 ${theme === 'dark'
                   ? 'bg-slate-800 text-white border-2 border-slate-700 focus:border-blue-500'
                   : 'bg-white text-slate-900 border-2 border-slate-200 focus:border-blue-500'
                 }
+                ${passwordError && isSignUp ? 'border-red-500' : ''}
               `}
               required
             />
+            {isSignUp && passwordError && (
+              <p className={`mt-1 text-sm ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}`}>
+                {passwordError}
+              </p>
+            )}
           </div>
+
+          {isSignUp && (
+            <div>
+              <input
+                type="password"
+                placeholder="Confirm Password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={`w-full px-4 py-3 rounded-xl outline-none transition-colors
+                  ${theme === 'dark'
+                    ? 'bg-slate-800 text-white border-2 border-slate-700 focus:border-blue-500'
+                    : 'bg-white text-slate-900 border-2 border-slate-200 focus:border-blue-500'
+                  }
+                `}
+                required
+              />
+            </div>
+          )}
 
           {isSignUp && (
             <div>

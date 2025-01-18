@@ -66,7 +66,7 @@ const PremiumPage = () => {
 
   const handleUpgrade = async () => {
     if (!user) {
-      router.push('/signin')
+      router.push('/signin?returnUrl=/premium')
       return
     } else {
       showToast('let me check your premium status...', 'info')

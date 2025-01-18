@@ -247,7 +247,7 @@ export default function AnalyticsPage() {
   useEffect(() => {
     const checkPremiumStatus = async () => {
       if (!user) {
-        router.push('/')
+        router.push('/signin?returnUrl=/analytics')
         return
       }
 

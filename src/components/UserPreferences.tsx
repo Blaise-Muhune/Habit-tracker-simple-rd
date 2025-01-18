@@ -76,6 +76,7 @@ const UserPreferences = () => {
   useEffect(() => {
     const loadPreferences = async () => {
       if (!user) {
+        router.push('/signin?returnUrl=/preferences');
         setLoading(false);
         return;
       }

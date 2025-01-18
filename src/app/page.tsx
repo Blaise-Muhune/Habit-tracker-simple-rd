@@ -4,7 +4,7 @@ import { format, addDays } from 'date-fns'
 import { motion } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { Sun, Moon } from 'lucide-react'
-import { db } from '@/lib/firebase'
+import { auth, db } from '@/lib/firebase'
 import { 
   collection, 
   query, 
@@ -30,6 +30,12 @@ import { Tour } from '@/components/Tour'
 import { useRouter } from 'next/navigation'
 
 
+const truncateText = (text: string, maxLength: number = 50) => {
+  if (!text) return '';
+  const firstLine = text.split('\n')[0];
+  if (firstLine.length <= maxLength) return firstLine;
+  return firstLine.substring(0, maxLength) + '...';
+};
 
 
 
@@ -472,6 +478,54 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     setTimeBlockView('hour')
     setTomorrowTimeBlockView('hour')
   }
+
+  useEffect(() => {
+    if (user) {
+      // Check if this is a new user by looking for any existing tasks
+      const checkNewUser = async () => {
+        try {
+          const tasksQuery = query(
+            collection(db, 'tasks'),
+            where('userId', '==', user.uid),
+            limit(1)
+          );
+          
+          const snapshot = await getDocs(tasksQuery);
+          
+          if (snapshot.empty) {
+            // Create onboarding task at current hour
+            const currentHour = new Date().getHours();
+            const onboardingTask: Task = {
+              userId: user.uid,
+              activity: "🎉 Welcome! Click me to view More",
+              description: "This is your first task! click on  'Modify today's Schedule' above to edit your schedule. \n Click 'Plan Tomorrow' to add tasks for tomorrow. \n Click on any hour to create a new task, or click this task to see more details. \n You can mark tasks as complete, set priorities, and plan for tomorrow. \n One Day at a Time",
+              startTime: currentHour,
+              duration: 1,
+              date: formatDate(new Date()),
+              completed: false,
+              isPriority: true,
+              createdAt: Date.now(),
+              reminderSent: false
+            };
+
+            // Save to Firebase
+            const docRef = await addDoc(collection(db, 'tasks'), onboardingTask);
+            
+            // Update local state
+            setTodayTasks(prev => [...prev, { ...onboardingTask, id: docRef.id }]);
+            
+            // Also set tour to show
+            setShowTour(true);
+            setTourStep(0);
+          }
+        } catch (error) {
+          console.error('Error creating onboarding task:', error);
+        }
+      };
+
+      checkNewUser();
+    }
+  }, [user]); // Only run when user changes
   
   // update user timezone
   useEffect(() => {
@@ -1175,10 +1229,11 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
     console.log('Detected timezone:', timezone);
 
-    
-    const response = await fetch('/api/notifications', {
-      method: 'POST',
+    const idtoken = await auth.currentUser?.getIdToken();
+    const response = await fetch('/api/weekly-analytics-email', {
+      method: 'GET',
       headers: {
+        'Authorization': `Bearer ${idtoken}`,
         'Content-Type': 'application/json'
       },
 
@@ -2155,7 +2210,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                             ${!showTomorrow && task.completed ? 'line-through opacity-50' : ''}
                             ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
                           `}>
-                            {task.description}
+                            {task.description && truncateText(task.description)}
                           </p>
                         )}
                       </div>
