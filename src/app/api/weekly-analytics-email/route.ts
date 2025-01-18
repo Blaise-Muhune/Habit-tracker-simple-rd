@@ -63,13 +63,6 @@ export async function GET(request: Request) {
 
   try {
 
-    const {searchParams} = new URL(request.url);
-    const key = searchParams.get('cron-key');
-    if (key !== process.env.CRON_SECRET) {
-      return NextResponse.json({ 
-        error: 'Unauthorized - Invalid cron key' 
-      }, { status: 401 });
-    }
     // Verify Firebase ID token
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
