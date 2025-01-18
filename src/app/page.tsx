@@ -1230,7 +1230,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     console.log('Detected timezone:', timezone);
 
     const idtoken = await auth.currentUser?.getIdToken();
-    const response = await fetch('/api/weekly-analytics-email?cron-key=' + process.env.CRON_SECRET, {
+    const cronKey = process.env.CRON_SECRET;
+    const response = await fetch('/api/weekly-analytics-email?cron-key=' + cronKey, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${idtoken}`,
