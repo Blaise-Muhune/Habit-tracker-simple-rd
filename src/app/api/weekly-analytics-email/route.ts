@@ -59,6 +59,7 @@ https://simple-r.vercel.app/preferences`
 export async function GET(request: Request) {
 
   console.log('🔄 Weekly analytics email job started');
+  console.log('request url', request.url);
 
   try {
 
