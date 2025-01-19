@@ -167,9 +167,6 @@ export async function GET(request: Request) {
 
       if (!userPrefs.email) continue; // Skip if no email address
 
-      // Get user's analytics data
-      const analyticsDoc = await getDoc(doc(db, 'analytics', userId));
-
       // Calculate weekly stats
       const weekStart = new Date();
       weekStart.setDate(weekStart.getDate() - 7);
