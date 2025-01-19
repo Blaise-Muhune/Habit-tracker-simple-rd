@@ -169,19 +169,11 @@ export async function GET(request: Request) {
 
       // Get user's analytics data
       const analyticsDoc = await getDoc(doc(db, 'analytics', userId));
-      const analyticsData = analyticsDoc.exists() ? analyticsDoc.data() : {};
 
       // Calculate weekly stats
       const weekStart = new Date();
       weekStart.setDate(weekStart.getDate() - 7);
-      
-      const tasksQuery = query(
-        collection(db, 'tasks'),
-        where('userId', '==', userId),
-        where('createdAt', '>=', weekStart.toISOString())
-      );
 
-    
       const emailResult = await sendWeeklyAnalyticsEmail(userPrefs.email);
       results.push(emailResult);
       console.log('🏁 Weekly analytics email process completed for user:', userId);
