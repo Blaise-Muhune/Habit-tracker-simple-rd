@@ -20,14 +20,14 @@ webpush.setVapidDetails(
 async function sendEmailNotification(task: Task, email: string, reminderTime: number) {
   console.log('📧 Attempting email notification:', { taskId: task.id, email });
   try {
-    const response = await fetch(new URL('/api/send-reminder', 'https://simple-r.vercel.app').toString(), {
+    const response = await fetch(new URL('/api/send-reminder', process.env.NEXT_PUBLIC_APP_URL as string || 'https://simple-r.vercel.app').toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         to: email,
-        subject: `Reminder: ${task.activity}`,
+        subject: `Reminder: ${task.activity} in ${reminderTime} minutes`,
         html: `
           <!DOCTYPE html>
           <html>
