@@ -12,7 +12,7 @@ const transporter = nodemailer.createTransport({
 
 export async function POST(request: Request) {
   try {
-    const { to, subject, text } = await request.json()
+    const { to, subject, text, html } = await request.json()
 
     // Validate email address
     if (!to || !to.includes('@')) {
@@ -22,12 +22,13 @@ export async function POST(request: Request) {
       )
     }
 
-    // Send email
+    // Send email with HTML and fallback text
     await transporter.sendMail({
       from: `"Task Manager" <${process.env.EMAIL_USER}>`,
       to,
       subject,
-      text,
+      text, // Plain text fallback
+      html, // HTML version
     })
 
     return NextResponse.json({ success: true })

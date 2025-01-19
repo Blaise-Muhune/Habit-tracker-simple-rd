@@ -20,7 +20,6 @@ webpush.setVapidDetails(
 async function sendEmailNotification(task: Task, email: string, reminderTime: number) {
   console.log('📧 Attempting email notification:', { taskId: task.id, email });
   try {
-    // Call your email endpoint
     const response = await fetch(new URL('/api/send-reminder', 'https://simple-r.vercel.app').toString(), {
       method: 'POST',
       headers: {
@@ -29,7 +28,153 @@ async function sendEmailNotification(task: Task, email: string, reminderTime: nu
       body: JSON.stringify({
         to: email,
         subject: `Reminder: ${task.activity}`,
-        text: `Your task "${task.activity}" is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n want to change reminder type? visit https://simple-r.vercel.app/preferences`
+        html: `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Task Reminder</title>
+            </head>
+            <body style="
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              line-height: 1.6;
+              margin: 0;
+              padding: 0;
+              background-color: #f8fafc;
+            ">
+              <div style="
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+              ">
+                <!-- Header -->
+                <div style="
+                  background: linear-gradient(to right, #8b5cf6, #3b82f6, #22d3ee);
+                  padding: 32px 24px;
+                  border-radius: 16px;
+                  margin-bottom: 24px;
+                  text-align: center;
+                ">
+                  <h1 style="
+                    color: white;
+                    margin: 0;
+                    font-size: 24px;
+                    font-weight: bold;
+                  ">⏰ Task Reminder</h1>
+                </div>
+
+                <!-- Main Content -->
+                <div style="
+                  background: white;
+                  border-radius: 16px;
+                  padding: 24px;
+                  margin-bottom: 24px;
+                  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+                ">
+                  <h2 style="
+                    color: #1e293b;
+                    margin-top: 0;
+                    font-size: 20px;
+                    text-align: center;
+                  ">${task.activity}</h2>
+                  
+                  <div style="
+                    background: #f1f5f9;
+                    border-radius: 12px;
+                    padding: 20px;
+                    margin: 24px 0;
+                  ">
+                    <p style="
+                      color: #475569;
+                      margin: 0;
+                      font-size: 16px;
+                    ">
+                      🕒 Starting in <strong>${reminderTime} minutes</strong>
+                    </p>
+                    ${task.description ? `
+                      <p style="
+                        color: #475569;
+                        margin: 16px 0 0 0;
+                        font-size: 16px;
+                      ">
+                        📝 <strong>Details:</strong> ${task.description}
+                      </p>
+                    ` : ''}
+                  </div>
+
+                  <!-- Motivation Section -->
+                  <div style="
+                    border-left: 4px solid #8b5cf6;
+                    padding-left: 16px;
+                    margin: 24px 0;
+                  ">
+                    <p style="
+                      color: #475569;
+                      font-style: italic;
+                      margin: 0;
+                    ">
+                      "Remember why you started this task. Each step forward, no matter how small, brings you closer to your goals. You've got this! 💪"
+                    </p>
+                  </div>
+
+                  <div style="text-align: center; margin-top: 24px;">
+                    <a href="https://simple-r.vercel.app" 
+                      style="
+                        display: inline-block;
+                        background: linear-gradient(to right, #8b5cf6, #7c3aed);
+                        color: white;
+                        text-decoration: none;
+                        padding: 12px 24px;
+                        border-radius: 8px;
+                        font-weight: 600;
+                      "
+                    >View Task Details</a>
+                  </div>
+                </div>
+
+                <!-- Quick Tips -->
+                <div style="
+                  background: #f8fafc;
+                  border: 1px solid #e2e8f0;
+                  border-radius: 12px;
+                  padding: 16px;
+                  margin-bottom: 24px;
+                ">
+                  <h3 style="
+                    color: #1e293b;
+                    margin: 0 0 12px 0;
+                    font-size: 16px;
+                  ">💡 Quick Tips:</h3>
+                  <ul style="
+                    color: #475569;
+                    margin: 0;
+                    padding-left: 20px;
+                  ">
+                    <li>Break your task into smaller, manageable steps</li>
+                    <li>Remove distractions before starting</li>
+                    <li>Take short breaks to maintain focus</li>
+                  </ul>
+                </div>
+
+                <!-- Footer -->
+                <div style="
+                  text-align: center;
+                  color: #64748b;
+                  font-size: 14px;
+                ">
+                  <p style="margin: 0;">Want to change your reminder settings?</p>
+                  <p style="margin: 8px 0;">
+                    <a href="https://simple-r.vercel.app/preferences" 
+                      style="color: #8b5cf6; text-decoration: none;"
+                    >Update your preferences</a>
+                  </p>
+                </div>
+              </div>
+            </body>
+          </html>
+        `,
+        text: `Reminder: ${task.activity} is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n Remember why you started this task. Each step forward, no matter how small, brings you closer to your goals. You've got this! 💪 \n\nWant to change reminder type? Visit https://simple-r.vercel.app/preferences`
       })
     });
 
@@ -156,6 +301,27 @@ function getUserLocalTime(userTimezone: string) {
   };
 }
 
+function calculateNotificationTime(startTime: number, reminderMinutes: number) {
+  // Convert decimal time to hours and minutes
+  const startHours = Math.floor(startTime);
+  const startMinutes = Math.round((startTime % 1) * 60);
+  
+  // Calculate notification time by subtracting reminder minutes
+  let notificationMinutes = startMinutes - reminderMinutes;
+  let notificationHours = startHours;
+  
+  // Handle minute underflow
+  if (notificationMinutes < 0) {
+    notificationHours -= 1;
+    notificationMinutes += 60;
+  }
+  
+  return {
+    hour: notificationHours,
+    minute: notificationMinutes
+  };
+}
+
 export async function POST(request: Request) {
   console.log('request base url', request.url)
   console.log('🔄 POST request received');
@@ -204,17 +370,22 @@ export async function POST(request: Request) {
         continue;
       }
 
+    
+
+      // Calculate notification time
+      const { hour: notificationHour, minute: notificationMinute } = calculateNotificationTime(
+        task.startTime,
+        userPrefs.reminderTime || 10
+      );
+
       console.log('📝 Processing task:', {
         taskId: taskDoc.id,
         activity: task.activity,
         startTime: task.startTime,
         userTimezone,
-        userLocalTime: `${currentHour}:${currentMinute}`
+        userLocalTime: `${currentHour}:${currentMinute}`,
+        notificationTime: `${notificationHour}:${notificationMinute}`
       });
-
-      // Calculate notification time
-      const notificationHour = task.startTime - 1;
-      const notificationMinute = 60 - (userPrefs.reminderTime || 10);
 
       if (currentHour === notificationHour && currentMinute === notificationMinute) {
         console.log('🔔 Sending notifications for task:', taskDoc.id);
@@ -332,23 +503,27 @@ export async function GET() {
         continue;
       }
 
+      
+
+      // Calculate notification time
+      const { hour: notificationHour, minute: notificationMinute } = calculateNotificationTime(
+        task.startTime,
+        userPrefs.reminderTime || 10
+      );
       console.log('📝 Processing task:', {
         taskId: taskDoc.id,
         activity: task.activity,
         startTime: task.startTime,
         userTimezone,
-        userLocalTime: `${currentHour}:${currentMinute}`
+        userLocalTime: `${currentHour}:${currentMinute}`,
+        notificationTime: `${notificationHour}:${notificationMinute}`
       });
-
-      // Calculate notification time
-      const notificationHour = task.startTime - 1;
-      const notificationMinute = 60 - (userPrefs.reminderTime || 10);
-
       if (currentHour === notificationHour && currentMinute === notificationMinute) {
         console.log('🔔 Sending notifications for task:', taskDoc.id);
 
         const notificationResults = [];
 
+        
         // Email notification
         if (userPrefs.emailReminders && userPrefs.email) {
           const emailResult = await sendEmailNotification(task as Task, userPrefs.email, userPrefs?.reminderTime);
