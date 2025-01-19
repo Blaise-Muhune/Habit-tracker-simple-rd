@@ -1,5 +1,5 @@
 import { db } from '@/lib/firebase';
-import { collection, query, getDocs, where, getDoc, doc } from 'firebase/firestore';
+import { collection, query, getDocs, where } from 'firebase/firestore';
 import { NextResponse } from 'next/server';
 
 
