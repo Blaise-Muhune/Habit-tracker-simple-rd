@@ -27,8 +27,8 @@ export async function POST(request: Request) {
       from: `"Task Manager" <${process.env.EMAIL_USER}>`,
       to,
       subject,
-      html,
       text,
+      html
     })
 
     return NextResponse.json({ success: true })
