@@ -164,32 +164,6 @@ export async function GET(request: Request) {
 
     const userPrefs = userPrefDoc.data();
 
-    // Get user's analytics data
-    const analyticsDoc = await getDoc(doc(db, 'analytics', userId));
-    const analyticsData = analyticsDoc.exists() ? analyticsDoc.data() : {};
-
-    // Calculate weekly stats
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - 7);
-    
-    const tasksQuery = query(
-      collection(db, 'tasks'),
-      where('userId', '==', userId),
-      where('createdAt', '>=', weekStart.toISOString())
-    );
-
-    const tasksSnapshot = await getDocs(tasksQuery);
-    const completedTasks = tasksSnapshot.docs.filter(doc => doc.data().completed).length;
-    const totalTasks = tasksSnapshot.size;
-    const completionRate = totalTasks > 0 ? `${((completedTasks / totalTasks) * 100).toFixed(1)}%` : '0%';
-
-    const userData = {
-      ...analyticsData,
-      completedTasks,
-      totalTasks,
-      completionRate
-    };
-
     const emailResult = await sendWeeklyAnalyticsEmail(userPrefs.email);
     console.log('🏁 Weekly analytics email process completed for user:', userId);
 
