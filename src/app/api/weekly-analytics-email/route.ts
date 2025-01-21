@@ -3,14 +3,7 @@ import { db } from '@/lib/firebase';
 import { collection, query, getDocs, where, getDoc, doc } from 'firebase/firestore';
 import { NextResponse } from 'next/server';
 
-interface WeeklyAnalyticsData {
-  completedTasks: number;
-  totalTasks: number;
-  completionRate: string;
-  // Add any other analytics fields from analyticsData here
-}
-
-async function sendWeeklyAnalyticsEmail(email: string, userData: WeeklyAnalyticsData) {
+async function sendWeeklyAnalyticsEmail(email: string) {
   console.log('📧 Attempting weekly analytics email:', { email });
   try {
     const response = await fetch(new URL('/api/send-reminder', 'https://simple-r.vercel.app').toString(), {
