@@ -317,6 +317,7 @@ export default function DailyTaskManager() {
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [showTaskModal, setShowTaskModal] = useState(false)
+  const [currentHour, setCurrentHour] = useState(new Date().getHours())
   const [isLoading, setIsLoading] = useState(true)
   // const [completedPriorities, setCompletedPriorities] = useState<number>(0)
   const [showFullSchedule, setShowFullSchedule] = useState(false)
@@ -379,35 +380,16 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     }
   }, [isStartTimePickerOpen, editingTask?.startTime])
 
-  // Update the currentHour state to include minutes
-  const [currentTime, setCurrentTime] = useState(() => {
-    const now = new Date();
-    return now.getHours() + (now.getMinutes() / 60);
-  });
-
-  // Replace the currentHour useEffect with this one
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const now = new Date();
-      setCurrentTime(now.getHours() + (now.getMinutes() / 60));
-    }, 60000); // Update every minute
-
-    return () => clearInterval(timer);
-  }, []);
-
-  // Update the scroll to current time useEffect
   useEffect(() => {
     if (!showTomorrow && !isLoading) {
-      // Round to nearest quarter hour for element ID
-      const quarterHour = Math.round(currentTime * 4) / 4;
-      const currentTimeElement = document.getElementById(`hour-${quarterHour}`);
-      if (currentTimeElement) {
+      const currentHourElement = document.getElementById(`hour-${currentHour}`)
+      if (currentHourElement) {
         setTimeout(() => {
-          currentTimeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 500);
+          currentHourElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 500) // Small delay to ensure elements are rendered
       }
     }
-  }, [showTomorrow, isLoading, currentTime]);
+  }, [showTomorrow, isLoading, currentHour])
 
   const PremiumUpgradePrompt = () => (
     <div className={`
@@ -559,6 +541,29 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     }
   }, []);
   
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentHour(new Date().getHours())
+    }, 60000) // Update every minute
+
+    return () => clearInterval(timer)
+  }, [])
+
+
+  useEffect(() => {
+    if (!user) return
+
+    // Check for midnight transition every minute
+    const timer = setInterval(async () => {
+      const now = new Date()
+      if (now.getHours() === 0 && now.getMinutes() === 0) {
+        await handleMidnightTransition()
+      }
+    }, 60000)
+
+    return () => clearInterval(timer)
+  }, [user])
 
   useEffect(() => {
     if (user) {
@@ -844,9 +849,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       // Show slots with ongoing tasks
       const hasTaskDuring = getTaskAtHour(timeSlot);
       
-      // Show current time slot (rounded to nearest quarter hour)
-      const currentQuarterHour = Math.round(currentTime * 4) / 4;
-      const isCurrentTimeSlot = timeSlot === currentQuarterHour;
+      // Show current hour slot
+      const isCurrentHourSlot = timeSlot === Math.floor(currentHour * 2) / 2;
       
       // For hour view, show hour marks
       const isHourMark = Number.isInteger(timeSlot);
@@ -857,13 +861,13 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       // In tomorrow or full schedule view, show based on view type
       if (showTomorrow || showFullSchedule) {
         return currentTimeBlockView === 'hour' 
-          ? isHourMark || hasTaskStarting 
-          : isHalfHourMark || hasTaskStarting;
+          ? isHourMark || hasTaskStarting // Show hour marks and task starts
+          : isHalfHourMark || hasTaskStarting; // Show half-hour marks and task starts
       }
       
-      // In today view (not edit mode), only show slots with tasks or current time
-      return hasTaskStarting || hasTaskDuring || isCurrentTimeSlot;
-    }).sort((a, b) => a - b);
+      // In today view (not edit mode), only show slots with tasks or current hour
+      return hasTaskStarting || hasTaskDuring || isCurrentHourSlot;
+    }).sort((a, b) => a - b); // Ensure slots are in order
   };
 
   const saveTask = async (task: Task) => {
@@ -1244,7 +1248,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     //   },
 
     // });
-    const response = await fetch('/api/midnight-transfer-delete', {
+    const response = await fetch('/api/notifications', {
       method: 'GET',
     });
 
@@ -1257,6 +1261,21 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     const hours = Math.abs(Math.floor(offset / 60));
     return `Etc/GMT${offset <= 0 ? '+' : '-'}${hours}`;
   }
+
+  // Add this helper function for time options
+  // const generateTimeOptions = () => {
+  //   const options = []
+  //   for (let hour = 0; hour < 24; hour++) {
+  //     for (let minute = 0; minute < 60; minute += 15) {
+  //       const time = hour + (minute / 60)
+  //       options.push({
+  //         value: time,
+  //         label: formatTime(time)
+  //       })
+  //     }
+  //   }
+  //   return options
+  // }
 
   // Add the tomorrow view filter component
   const TomorrowViewFilter = () => (
@@ -1625,9 +1644,9 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                       setIsSuggestionsExpandedToday(false)
                       setIsSuggestionsExpandedTomorrow(false)
                       if (!showTomorrow) {
-                        const currentHourElement = document.getElementById(`hour-${currentTime}`)
+                        const currentHourElement = document.getElementById(`hour-${currentHour}`)
                         if (currentHourElement) {
-                          currentHourElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                          currentHourElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
                         }
                       }
                     }}
@@ -1910,46 +1929,46 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
           {/* Add suggestion button when in Today view */}
           {!showTomorrow && !showFullSchedule && (
-            <div className="sticky top-0 z-50 -mx-8 px-8 py-4 backdrop-blur-lg
-              ${theme === 'dark' ? 'bg-[#0B1120]/80' : 'bg-[#F0F4FF]/80'}"
-            >
-              <div className="max-w-4xl mx-auto">
-                <button
-                  onClick={() => {
+            <div className="max-w-4xl mx-auto mb-6">
+              <button
+                onClick={() => {
+                  
+                    // setShowTomorrow(false)
                     if (!showTomorrow) {
-                      const currentHourElement = document.getElementById(`hour-${currentTime}`)
+                      const currentHourElement = document.getElementById(`hour-${currentHour}`)
                       if (currentHourElement) {
                         currentHourElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
                       }
                     }
                     setShowFullSchedule(true)
-                  }}
-                  className={`
-                    w-full p-4 rounded-xl text-left relative overflow-hidden group
-                    ${theme === 'dark'
-                      ? 'bg-blue-500/20 hover:bg-blue-500/30'
-                      : 'bg-blue-50 hover:bg-blue-100'
-                    }
-                  `}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className={`font-medium ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
-                        Modify today&apos;s schedule
-                      </p>
-                    </div>
-                    <svg
-                      className={`w-5 h-5 transform transition-transform group-hover:translate-x-1
-                        ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                  }
+                  }
+                className={`
+                  w-full p-4 rounded-xl text-left relative overflow-hidden group
+                  ${theme === 'dark'
+                    ? 'bg-blue-500/20 hover:bg-blue-500/30'
+                    : 'bg-blue-50 hover:bg-blue-100'
+                  }
+                `}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className={`font-medium ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
+                      Modify today&apos;s schedule
+                    </p>
+                    
                   </div>
-                </button>
-              </div>
+                  <svg
+                    className={`w-5 h-5 transform transition-transform group-hover:translate-x-1
+                      ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
             </div>
           )}
 
@@ -2096,8 +2115,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             <div className="space-y-2 tour-timeline">
               {getVisibleHours().map((timeSlot) => {
                 const task = getTaskAtHour(timeSlot)
-                const isCurrentTimeSlot = !showTomorrow && timeSlot === Math.floor(currentTime * 2) / 2
-                const isPastTimeSlot = !showTomorrow && timeSlot < currentTime
+                const isCurrentTimeSlot = !showTomorrow && timeSlot === Math.floor(currentHour * 2) / 2
+                const isPastTimeSlot = !showTomorrow && timeSlot < currentHour
 
                 if (isHourPartOfTask(timeSlot)) return null
 
@@ -2117,7 +2136,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                       ${task.completed ? 'opacity-50' : isPastTimeSlot ? 'opacity-50' : ''}
                       ${(!showTomorrow && (
                         isCurrentTimeSlot || 
-                        (currentTime >= task.startTime && currentTime < (task.startTime + task.duration))
+                        (currentHour >= task.startTime && currentHour < (task.startTime + task.duration))
                       )) ? 'ring-2 ring-offset-2 ring-red-500 ring-offset-black' : ''}
                       ${task.isPriority
                         ? theme === 'dark'
@@ -2275,7 +2294,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                     </div>
 
                     {/* Add a "Current" indicator if this task includes the current hour */}
-                    {!showTomorrow && currentTime >= task.startTime && currentTime < (task.startTime + task.duration) && (
+                    {!showTomorrow && currentHour >= task.startTime && currentHour < (task.startTime + task.duration) && (
                       <div className={`
                         absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium
                         ${theme === 'dark' 

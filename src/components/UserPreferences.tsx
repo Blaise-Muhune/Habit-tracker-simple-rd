@@ -474,8 +474,6 @@ const UserPreferences = () => {
               >
                 <option value="1">1 minute before</option>
                 <option value="2">2 minutes before</option>
-                <option value="3">3 minutes before</option>
-                <option value="4">4 minutes before</option>
                 <option value="5">5 minutes before</option>
                 <option value="6">6 minutes before</option>
                 <option value="7">7 minutes before</option>
