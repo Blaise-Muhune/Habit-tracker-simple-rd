@@ -40,8 +40,9 @@ const truncateText = (text: string, maxLength: number = 50) => {
 
 const formatDate = (date: Date) => format(date, 'yyyy-MM-dd')
 const today = format(new Date(),"EEEE")
+const todayDate = format(new Date(),"yyyy-MM-dd")
 const tomorrow = format(addDays(new Date(), 1), "EEEE")
-
+const tomorrowDate = format(addDays(new Date(), 1), "yyyy-MM-dd")
 
 const formatTime = (time: number) => {
   const hours = Math.floor(time)
@@ -507,6 +508,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
               startTime: currentHour,
               duration: 1,
               date: formatDate(new Date()),
+              day: today,
               completed: false,
               isPriority: true,
               createdAt: Date.now(),
@@ -941,7 +943,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       const updatedTask = {
         ...task,
         ...updates,
-        date: showTomorrow ? tomorrow : today
+        date: showTomorrow ? tomorrowDate : todayDate,
+        day: showTomorrow ? tomorrow : today
       }
       await updateDoc(doc(db, 'tasks', task.id), updatedTask)
       setCurrentTasks(getCurrentTasks().map(t => 
@@ -1010,8 +1013,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       const defaultDuration = currentView === 'hour' ? 1 : 0.5
 
       // Get the day of the week
-      const taskDate = showTomorrow ? addDays(new Date(), 1) : new Date();
-      const dayOfWeek = format(taskDate, 'EEEE').toLowerCase();
+      // const taskDate = showTomorrow ? addDays(new Date(), 1) : new Date();
+      // const dayOfWeek = format(taskDate, 'EEEE').toLowerCase();
 
       const newTask: Task = {
         startTime: timeSlot,
@@ -1020,10 +1023,10 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         description: '',
         isPriority: false,
         createdAt: Date.now(),
-        date: showTomorrow ? tomorrow : today,
+        date: showTomorrow ? tomorrowDate : todayDate,
+        day: showTomorrow ? tomorrow : today,
         userId: user.uid,
         completed: false,
-        day: dayOfWeek // Add the day property
       }
       setEditingTask(newTask)
       setShowTaskModal(true)
@@ -1055,8 +1058,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       return
     }
 
-    const taskDate = showTomorrow ? addDays(new Date(), 1) : new Date();
-    const dayOfWeek = format(taskDate, 'EEEE').toLowerCase();
+    
 
     const newTask: Task = {
       startTime: start,
@@ -1065,10 +1067,10 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       description: '',
       isPriority: false,
       createdAt: Date.now(),
-      date: showTomorrow ? tomorrow : today,
+      date: showTomorrow ? tomorrowDate : todayDate,
       userId: user.uid,
       completed: false,
-      day: dayOfWeek // Add the day property
+      day: showTomorrow ? tomorrow : today
     }
 
     setEditingTask(newTask)
