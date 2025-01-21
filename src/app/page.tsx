@@ -552,20 +552,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
 
   useEffect(() => {
-    if (!user) return
-
-    // Check for midnight transition every minute
-    const timer = setInterval(async () => {
-      const now = new Date()
-      if (now.getHours() === 0 && now.getMinutes() === 0) {
-        await handleMidnightTransition()
-      }
-    }, 60000)
-
-    return () => clearInterval(timer)
-  }, [user])
-
-  useEffect(() => {
     if (user) {
       // Check user's premium status
       const checkPremiumStatus = async () => {
@@ -787,8 +773,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       const historicalTasksQuery = query(
         collection(db, 'tasks'),
         where('userId', '==', user.uid),
-        // where('date', 'in', last7Days),
-        // limit(30)
+        where('date', 'in', last7Days),
+        limit(30)
       )
 
       const snapshot = await getDocs(historicalTasksQuery)
@@ -1240,17 +1226,17 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     console.log('Detected timezone:', timezone);
 
     const idtoken = await auth.currentUser?.getIdToken();
-    // const response = await fetch('/api/weekly-analytics-email', {
-    //   method: 'GET',
-    //   headers: {
-    //     'Authorization': `Bearer ${idtoken}`,
-    //     'Content-Type': 'application/json'
-    //   },
-
-    // });
-    const response = await fetch('/api/notifications', {
+    const response = await fetch('/api/weekly-analytics-email', {
       method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${idtoken}`,
+        'Content-Type': 'application/json'
+      },
+
     });
+    // const response = await fetch('/api/notifications', {
+    //   method: 'GET',
+    // });
 
     const data = await response.json();
     console.log('Notification check response:', data);
