@@ -1885,27 +1885,9 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             <>
               {/* AI Suggestions Section */}
               {isPremiumUser ? (
-                <>
-                <AITaskSuggestions
-                  theme={theme || 'light'}
-                  isPremiumUser={isPremiumUser}
-                  isSuggestionsExpanded={isSuggestionsExpandedTomorrow}
-                  setIsSuggestionsExpanded={setIsSuggestionsExpandedTomorrow}
-                  suggestions={suggestionsTomorrow}
-                  isLoadingSuggestions={isLoadingSuggestionsTomorrow}
-                  loadSuggestions={loadSuggestionsTomorrow}
-                  getCurrentTasks={getCurrentTasks}
-                  setEditingTask={setEditingTask}
-                  setShowTaskModal={setShowTaskModal}
-                  setCurrentTasks={setCurrentTasks}
-                  setSuggestions={setSuggestionsTomorrow}
-                  user={user as User}
-                  day={tomorrow}
-                  todayOrTomorrow='tomorrow'
-                  loadTasks={loadTasks}
-                />
+               
                 <TomorrowViewFilter />
-                </>
+                
 
               ) : (
                 <PremiumUpgradePrompt />
@@ -1959,7 +1941,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
           )}
 
           {/* Show AI Suggestions when in edit mode for Today */}
-          {!showTomorrow && showFullSchedule && (
+          {/* {!showTomorrow && showFullSchedule && (
           ( isPremiumUser) ?(
             <AITaskSuggestions
                   theme={theme || 'light'}
@@ -1979,7 +1961,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                   todayOrTomorrow='today'
                   loadTasks={loadTasks}
                 />
-          ): (<PremiumUpgradePrompt />))}
+          ): (<PremiumUpgradePrompt />))} */}
 
           {/* Task list with gaming aesthetic */}
           <div className="relative">
