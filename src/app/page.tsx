@@ -44,6 +44,7 @@ const todayDate = format(new Date(),"yyyy-MM-dd")
 const tomorrow = format(addDays(new Date(), 1), "EEEE")
 const tomorrowDate = format(addDays(new Date(), 1), "yyyy-MM-dd")
 
+
 const formatTime = (time: number) => {
   const hours = Math.floor(time)
   const minutes = Math.round((time % 1) * 60)
@@ -508,7 +509,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
               startTime: currentHour,
               duration: 1,
               date: formatDate(new Date()),
-              day: today,
               completed: false,
               isPriority: true,
               createdAt: Date.now(),
@@ -663,7 +663,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   };
 
   const loadTasks = async () => {
-    console.log('user logged in', user);
     if (!user) {
       setTodayTasks([]);
       setTomorrowTasks([]);
@@ -672,29 +671,31 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     }
 
     try {
-      // Create a query for tasks with today's and tomorrow's dates
       const tasksQuery = query(
         collection(db, 'tasks'),
         where('userId', '==', user.uid),
-        where('date', 'in', [today, tomorrow]),
+        where('date', 'in', [todayDate, tomorrowDate]), // Use the formatted dates
         orderBy('startTime', 'asc')
       );
 
       const tasksSnapshot = await getDocs(tasksQuery);
       
-      // Convert the snapshot to Task objects with IDs
       const tasks = tasksSnapshot.docs.map(doc => ({
-        id: doc.id,  // Make sure to include the document ID
+        id: doc.id,
         ...doc.data()
       })) as Task[];
 
-      // Separate tasks into today and tomorrow arrays
-      const todayTasksList = tasks.filter(task => task.date === today);
-      const tomorrowTasksList = tasks.filter(task => task.date === tomorrow);
+      // Explicitly filter based on the exact date string
+      const todayTasksList = tasks.filter(task => task.date === todayDate);
+      const tomorrowTasksList = tasks.filter(task => task.date === tomorrowDate);
 
-      console.log('Loaded tasks:', { today: todayTasksList, tomorrow: tomorrowTasksList });
+      console.log('Loaded tasks:', { 
+        today: todayTasksList, 
+        tomorrow: tomorrowTasksList,
+        todayDate,
+        tomorrowDate
+      });
 
-      // Update state
       setTodayTasks(todayTasksList);
       setTomorrowTasks(tomorrowTasksList);
       setIsLoading(false);
@@ -862,26 +863,24 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     if (!user) return;
 
     try {
-      // Get the day of the week based on the task's date
-      const taskDate = showTomorrow ? addDays(new Date(), 1) : new Date();
-      const dayOfWeek = format(taskDate, 'EEEE').toLowerCase(); // Returns 'monday', 'tuesday', etc.
-
+      // Explicitly set the date based on which view we're in
+      const taskDate = showTomorrow ? tomorrowDate : todayDate;
+      
       const taskData = {
         ...task,
         userId: user.uid,
         reminderSent: false,
         createdAt: Date.now(),
-        day: dayOfWeek // Add the day property
+        date: taskDate, // Make sure we're using the correct date
+        day: format(showTomorrow ? addDays(new Date(), 1) : new Date(), 'EEEE').toLowerCase()
       };
 
       let savedTaskId: string;
       
       if (task.id) {
-        // Update existing task
         await updateDoc(doc(db, 'tasks', task.id), taskData);
         savedTaskId = task.id;
       } else {
-        // Create new task
         const docRef = await addDoc(collection(db, 'tasks'), taskData);
         savedTaskId = docRef.id;
       }
@@ -889,14 +888,14 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       // Create updated task with ID
       const updatedTask = { ...taskData, id: savedTaskId };
 
-      // Update local state based on the date
-      if (task.date === today) {
-        setTodayTasks(prev => {
+      // Update local state based on showTomorrow flag
+      if (showTomorrow) {
+        setTomorrowTasks(prev => {
           const filtered = prev.filter(t => t.id !== savedTaskId);
           return [...filtered, updatedTask];
         });
       } else {
-        setTomorrowTasks(prev => {
+        setTodayTasks(prev => {
           const filtered = prev.filter(t => t.id !== savedTaskId);
           return [...filtered, updatedTask];
         });
@@ -943,8 +942,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       const updatedTask = {
         ...task,
         ...updates,
-        date: showTomorrow ? tomorrowDate : todayDate,
-        day: showTomorrow ? tomorrow : today
+        date: showTomorrow ? tomorrow : today
       }
       await updateDoc(doc(db, 'tasks', task.id), updatedTask)
       setCurrentTasks(getCurrentTasks().map(t => 
@@ -1013,8 +1011,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       const defaultDuration = currentView === 'hour' ? 1 : 0.5
 
       // Get the day of the week
-      // const taskDate = showTomorrow ? addDays(new Date(), 1) : new Date();
-      // const dayOfWeek = format(taskDate, 'EEEE').toLowerCase();
+      const taskDate = showTomorrow ? addDays(new Date(), 1) : new Date();
+      const dayOfWeek = format(taskDate, 'EEEE').toLowerCase();
 
       const newTask: Task = {
         startTime: timeSlot,
@@ -1024,9 +1022,9 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         isPriority: false,
         createdAt: Date.now(),
         date: showTomorrow ? tomorrowDate : todayDate,
-        day: showTomorrow ? tomorrow : today,
         userId: user.uid,
         completed: false,
+        day: dayOfWeek // Add the day property
       }
       setEditingTask(newTask)
       setShowTaskModal(true)
@@ -1058,7 +1056,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       return
     }
 
-    
+    const taskDate = showTomorrow ? addDays(new Date(), 1) : new Date();
+    const dayOfWeek = format(taskDate, 'EEEE').toLowerCase();
 
     const newTask: Task = {
       startTime: start,
@@ -1070,7 +1069,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       date: showTomorrow ? tomorrowDate : todayDate,
       userId: user.uid,
       completed: false,
-      day: showTomorrow ? tomorrow : today
+      day: dayOfWeek // Add the day property
     }
 
     setEditingTask(newTask)
