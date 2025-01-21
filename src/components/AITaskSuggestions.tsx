@@ -8,6 +8,7 @@ interface AITaskSuggestionsProps {
   theme: string;
   isPremiumUser: boolean;
   isSuggestionsExpanded: boolean;
+  day: string;
   setIsSuggestionsExpanded: (value: boolean) => void;
   suggestions: SuggestedTask[];
   isLoadingSuggestions: boolean;
@@ -16,8 +17,10 @@ interface AITaskSuggestionsProps {
   setEditingTask: (task: Task | null) => void;
   setShowTaskModal: (show: boolean) => void;
   setCurrentTasks: (tasks: Task[]) => void;
+  loadTasks: () => Promise<void>;
   setSuggestions: React.Dispatch<React.SetStateAction<SuggestedTask[]>>;
   user: User | null;
+  todayOrTomorrow: string;
 }
 
 export default function AITaskSuggestions({
@@ -31,28 +34,44 @@ export default function AITaskSuggestions({
     setEditingTask,
     setShowTaskModal,
     setSuggestions,
-    user
+    user,
+    day,
+    loadTasks,
+    todayOrTomorrow
   }: AITaskSuggestionsProps) {
-    const [showAllSuggestions, setShowAllSuggestions] = useState(false);
-    const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [isInitialLoading, setIsInitialLoading] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [showAllSuggestions, setShowAllSuggestions] = useState(false);
     const INITIAL_SUGGESTIONS_COUNT = 4;
 
     useEffect(() => {
+      let isMounted = true;
+
       const fetchSuggestions = async () => {
+        if (isLoadingSuggestions || suggestions.length > 0) return;
+        
         setIsInitialLoading(true);
         try {
-          // Debug log to verify data
-          console.log('Sending request with user:', user?.uid);
+          if (!user?.uid || !day || !todayOrTomorrow) {
+            console.error('Missing required data for suggestions:', { 
+              userId: user?.uid, 
+              day, 
+              todayOrTomorrow 
+            });
+            setIsInitialLoading(false);
+            return;
+          }
 
-          const response = await fetch('/api/generate-suggestions', {
+          const response = await fetch(process.env.NEXT_PUBLIC_APP_URL+'/api/generate-suggestions', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              historicalTasks: getCurrentTasks() || [],
-              userId: user?.uid
+              userId: user.uid,
+              day,
+              todayOrTomorrow,
+              historicalTasks: getCurrentTasks() || []
             }),
           });
 
@@ -63,16 +82,24 @@ export default function AITaskSuggestions({
           }
 
           const data = await response.json();
-          setSuggestions(data);
+          if (isMounted) {
+            setSuggestions(data);
+          }
         } catch (error) {
           console.error('Failed to load suggestions:', error);
         } finally {
-          setIsInitialLoading(false);
+          if (isMounted) {
+            setIsInitialLoading(false);
+          }
         }
       };
 
       fetchSuggestions();
-    }, [user?.uid, getCurrentTasks, setSuggestions, user]);
+
+      return () => {
+        isMounted = false;
+      };
+    }, [user?.uid, day, todayOrTomorrow, isLoadingSuggestions, suggestions.length]);
 
     const visibleSuggestions = showAllSuggestions 
       ? suggestions 
@@ -88,14 +115,16 @@ export default function AITaskSuggestions({
         // Debug log to verify data
         console.log('Sending request with user:', user.uid);
 
-        const response = await fetch('/api/generate-suggestions', {
+        const response = await fetch(process.env.NEXT_PUBLIC_APP_URL+'/api/generate-suggestions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             historicalTasks: getCurrentTasks() || [],
-            userId: user.uid
+            userId: user.uid,
+            day: day,
+            todayOrTomorrow: todayOrTomorrow
           }),
         });
 
@@ -109,6 +138,23 @@ export default function AITaskSuggestions({
         setSuggestions(data);
       } catch (error) {
         console.error('Failed to load suggestions:', error);
+      }
+    };
+
+    const handleAcceptTask = async (task: Partial<Task>) => {
+      try {
+        // Create a new task with the correct date based on todayOrTomorrow
+        const taskWithDate = {
+          ...task,
+          date: day // Use the day prop which contains the correct date string
+        };
+        
+        setEditingTask(taskWithDate as Task);
+        setShowTaskModal(true);
+        // Reload tasks after modal is closed
+        await loadTasks();
+      } catch (error) {
+        console.error('Error handling task acceptance:', error);
       }
     };
 
@@ -260,14 +306,13 @@ export default function AITaskSuggestions({
                           key={index}
                           suggestion={suggestion}
                           theme={theme}
-                          onAccept={(task: Partial<Task>) => {
-                            setEditingTask(task as Task);
-                            setShowTaskModal(true);
-                          }}
+                          onAccept={handleAcceptTask}
                           onRemove={() => {
                             setSuggestions(prev => prev.filter((_, i) => i !== index));
                           }}
                           user={user}
+                          day={day}
+                          todayOrTomorrow={todayOrTomorrow}
                         />
                       ))}
                       

@@ -185,7 +185,8 @@ const UserPreferences = () => {
         email: user.email || '',
         defaultView: defaultView,
         // Preserve the tour status if it exists
-        hasCompletedTour: existingPrefs.hasCompletedTour
+        hasCompletedTour: existingPrefs.hasCompletedTour,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
       };
 
       await setDoc(doc(db, 'userPreferences', user.uid), preferences);

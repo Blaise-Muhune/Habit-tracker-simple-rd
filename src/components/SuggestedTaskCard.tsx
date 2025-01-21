@@ -10,6 +10,8 @@ interface SuggestedTaskCardProps {
   onAccept: (task: Partial<Task>) => void
   onRemove: () => void
   user: User | null
+  day: string
+  todayOrTomorrow: string
 }
 
 export default function SuggestedTaskCard({
@@ -18,6 +20,8 @@ export default function SuggestedTaskCard({
   onAccept,
   onRemove,
   user,
+  day,
+  todayOrTomorrow
 }: SuggestedTaskCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   
@@ -31,13 +35,12 @@ export default function SuggestedTaskCard({
     if (!user?.uid) return;
     
     try {
-      const suggestionsRef = collection(db, 'suggestions')
+      const suggestionsRef = collection(db, `suggestions-${todayOrTomorrow}`)
       const q = query(
         suggestionsRef,
         where('activity', '==', suggestion.activity),
         where('startTime', '==', suggestion.startTime),
         where('userId', '==', user.uid),
-        where('date', '==', new Date().toISOString().split('T')[0])
       )
       const querySnapshot = await getDocs(q)
       
@@ -60,7 +63,7 @@ export default function SuggestedTaskCard({
         duration: suggestion.duration,
         completed: false,
         isPriority: false,
-        date: new Date().toISOString().split('T')[0],
+        date: day,
         createdAt: Date.now(),
         userId: user?.uid,
         ...(suggestion.description && { description: suggestion.description }),

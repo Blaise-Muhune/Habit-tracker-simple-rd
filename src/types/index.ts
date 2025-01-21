@@ -18,6 +18,7 @@ export interface Task {
   reminderSent?: boolean
   category?: string
   lastUpdated?: number
+  day?: string
 }
 
 export interface HistoricalTask extends Task {
@@ -48,6 +49,7 @@ export interface UserPreferences {
   email: string;
   defaultView: 'today' | 'schedule';
   hasCompletedTour?: boolean;
+  timezone: string;
 }
 
 export interface SuggestedTask extends Omit<Task, 'id'> {

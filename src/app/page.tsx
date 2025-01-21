@@ -15,7 +15,6 @@ import {
   updateDoc,
   deleteDoc,
   doc,
-  writeBatch,
   setDoc,
   getDoc,
   limit
@@ -23,7 +22,7 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { User } from 'firebase/auth'
 import Link from 'next/link'
-import { Task, HistoricalTask, UserPreferences, SuggestedTask } from '@/types'
+import { Task, UserPreferences, SuggestedTask } from '@/types'
 import { Toast } from '@/components/Toast'
 import AITaskSuggestions from '../components/AITaskSuggestions'
 import { Tour } from '@/components/Tour'
@@ -40,8 +39,8 @@ const truncateText = (text: string, maxLength: number = 50) => {
 
 
 const formatDate = (date: Date) => format(date, 'yyyy-MM-dd')
-const today = formatDate(new Date())
-const tomorrow = formatDate(addDays(new Date(), 1))
+const today = format(new Date(),"EEEE")
+const tomorrow = format(addDays(new Date(), 1), "EEEE")
 
 
 const formatTime = (time: number) => {
@@ -322,14 +321,17 @@ export default function DailyTaskManager() {
   // const [completedPriorities, setCompletedPriorities] = useState<number>(0)
   const [showFullSchedule, setShowFullSchedule] = useState(false)
   const [showDetailPopup, setShowDetailPopup] = useState(false)
-  const [suggestions, setSuggestions] = useState<SuggestedTask[]>([])
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const [suggestionsToday, setSuggestionsToday] = useState<SuggestedTask[]>([])
+  const [suggestionsTomorrow, setSuggestionsTomorrow] = useState<SuggestedTask[]>([])
+  const [isLoadingSuggestionsTomorrow, setIsLoadingSuggestionsTomorrow] = useState(false)
+  const [isLoadingSuggestionsToday, setIsLoadingSuggestionsToday] = useState(false)
 const [isStartTimePickerOpen, setIsStartTimePickerOpen] = useState(false)
 const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   // const [plannedHours, setPlannedHours] = useState(0);
   // const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null)
   // Add this state to manage the collapse state
-  const [isSuggestionsExpanded, setIsSuggestionsExpanded] = useState(false);
+  const [isSuggestionsExpandedToday, setIsSuggestionsExpandedToday] = useState(false);
+  const [isSuggestionsExpandedTomorrow, setIsSuggestionsExpandedTomorrow] = useState(false);
   // Add this near the top where other state variables are defined
   const [isPremiumUser, setIsPremiumUser] = useState(false);
   const [toast, setToast] = useState<{
@@ -482,11 +484,14 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     setShowTaskModal(false)
     setShowFullSchedule(false)
     setShowDetailPopup(false)
-    setSuggestions([])
-    setIsLoadingSuggestions(false)
+    setSuggestionsToday([])
+    setSuggestionsTomorrow([])
+    setIsLoadingSuggestionsToday(false)
+    setIsLoadingSuggestionsTomorrow(false)
     setIsStartTimePickerOpen(false)
     setIsEndTimePickerOpen(false)
-    setIsSuggestionsExpanded(false)
+    setIsSuggestionsExpandedToday(false)
+    setIsSuggestionsExpandedTomorrow(false)
     setIsPremiumUser(false)
     setToast(null)
     setSelectedTask(null)
@@ -556,20 +561,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   
 
   useEffect(() => {
-    if (!user) return
-
-    // Check for midnight transition every minute
-    const timer = setInterval(async () => {
-      const now = new Date()
-      if (now.getHours() === 0 && now.getMinutes() === 0) {
-        await handleMidnightTransition()
-      }
-    }, 60000)
-
-    return () => clearInterval(timer)
-  }, [user])
-
-  useEffect(() => {
     if (user) {
       // Check user's premium status
       const checkPremiumStatus = async () => {
@@ -610,7 +601,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
           email: user.email || '',
           defaultView: 'today',
           pushReminders: false,
-          pushSubscription: null
+          pushSubscription: null,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
         };
         
         await setDoc(doc(db, 'userPreferences', user.uid), defaultPrefs);
@@ -670,68 +662,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     router.push('/signin')
   }
 
-  const handleMidnightTransition = async () => {
-    console.log('handleMidnightTransition called');
-    if (!user) return
-
-    try {
-      // 1. Get yesterday's date
-      const yesterday = formatDate(addDays(new Date(), -1))
-      
-      // 2. Query yesterday's tasks to store in history
-      const yesterdayQuery = query(
-        collection(db, 'tasks'),
-        where('userId', '==', user.uid),
-        where('date', '==', yesterday)
-      )
-      const yesterdaySnapshot = await getDocs(yesterdayQuery)
-      
-      // 3. Store yesterday's tasks in history collection
-      const batch = writeBatch(db)
-      yesterdaySnapshot.docs.forEach(docSnapshot => {
-        const taskData = docSnapshot.data() as Task
-        const historyRef = doc(db, 'taskHistory')  // Create new doc reference
-        batch.set(historyRef, {
-          ...taskData,
-          originalDate: yesterday,
-          actualDate: yesterday,
-          archivedAt: Date.now() // Use current timestamp instead of serverTimestamp()
-        } as HistoricalTask)
-        
-        // Delete the task from main collection
-        batch.delete(docSnapshot.ref)
-      })
-
-      // 4. Move tomorrow's tasks to today
-      const oldTomorrowQuery = query(
-        collection(db, 'tasks'),
-        where('userId', '==', user.uid),
-        where('date', '==', yesterday) // This was "tomorrow" yesterday
-      )
-      const tomorrowSnapshot = await getDocs(oldTomorrowQuery)
-      
-      tomorrowSnapshot.docs.forEach(docSnapshot => {
-        const taskData = docSnapshot.data() as Task
-        const newTodayRef = collection(db, 'tasks')
-        batch.set(doc(newTodayRef), {
-          ...taskData,
-          date: formatDate(new Date()), // Set to today
-          completed: false // Reset completion status
-        })
-        
-        // Delete the old tomorrow task
-        batch.delete(docSnapshot.ref)
-      })
-
-      // 5. Execute all operations
-      await batch.commit()
-
-      // 6. Refresh the UI
-      loadTasks()
-    } catch (error) {
-      console.error('Error during midnight transition:', error)
-    }
-  }
+  
 
   const getNextTask = (currentHour: number) => {
     return getCurrentTasks()
@@ -790,14 +721,15 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
   useEffect(() => {
     if (showTomorrow && user) {
-      loadSuggestions()
+      // loadSuggestionsToday()
+      // loadSuggestionsTomorrow()
     }
   }, [showTomorrow, user])
 
-  const loadSuggestions = useCallback(async () => {
+  const loadSuggestionsTomorrow = useCallback(async () => {
     if (!user) return;
     
-    setIsLoadingSuggestions(true);
+    setIsLoadingSuggestionsTomorrow(true);
     try {
 
       const last7Days = Array.from({ length: 7 }, (_, i) => 
@@ -816,22 +748,67 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         ...doc.data()
       })) as Task[]
       
-      const response = await fetch('/api/generate-suggestions', {
+      const response = await fetch(process.env.NEXT_PUBLIC_API_URL + '/api/generate-suggestions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           historicalTasks,
-          userId: user.uid  // Add this line
+          userId: user.uid,
+          day: tomorrow,
+          todayOrTomorrow: 'tomorrow'
         }),
       });
       
       if (!response.ok) throw new Error('Failed to generate suggestions');
       const newSuggestions = await response.json();
-      setSuggestions(newSuggestions);
+      setSuggestionsTomorrow(newSuggestions);
     } catch (error) {
       console.error('Error loading suggestions:', error);
     } finally {
-      setIsLoadingSuggestions(false);
+      setIsLoadingSuggestionsTomorrow(false);
+    }
+  }, [user]);
+
+  const loadSuggestionsToday = useCallback(async () => {
+    if (!user) return;
+    
+    setIsLoadingSuggestionsToday(true);
+    try {
+
+      const last7Days = Array.from({ length: 7 }, (_, i) => 
+        formatDate(addDays(new Date(), -(i + 1)))
+      )
+
+      const historicalTasksQuery = query(
+        collection(db, 'tasks'),
+        where('userId', '==', user.uid),
+        // where('date', 'in', last7Days),
+        // limit(30)
+      )
+
+      const snapshot = await getDocs(historicalTasksQuery)
+      const historicalTasks = snapshot.docs.map(doc => ({
+        ...doc.data()
+      })) as Task[]
+      
+      const response = await fetch(process.env.NEXT_PUBLIC_API_URL + '/api/generate-suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          historicalTasks,
+          userId: user.uid,
+          day: today,
+          todayOrTomorrow: 'today'
+        }),
+      });
+      
+      if (!response.ok) throw new Error('Failed to generate suggestions');
+      const newSuggestions = await response.json();
+      setSuggestionsToday(newSuggestions);
+    } catch (error) {
+      console.error('Error loading suggestions:', error);
+    } finally {
+      setIsLoadingSuggestionsToday(false);
     }
   }, [user]);
 
@@ -893,11 +870,16 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     if (!user) return;
 
     try {
+      // Get the day of the week based on the task's date
+      const taskDate = showTomorrow ? addDays(new Date(), 1) : new Date();
+      const dayOfWeek = format(taskDate, 'EEEE').toLowerCase(); // Returns 'monday', 'tuesday', etc.
+
       const taskData = {
         ...task,
         userId: user.uid,
         reminderSent: false,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        day: dayOfWeek // Add the day property
       };
 
       let savedTaskId: string;
@@ -1037,16 +1019,21 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       // Set duration based on current view
       const defaultDuration = currentView === 'hour' ? 1 : 0.5
 
+      // Get the day of the week
+      const taskDate = showTomorrow ? addDays(new Date(), 1) : new Date();
+      const dayOfWeek = format(taskDate, 'EEEE').toLowerCase();
+
       const newTask: Task = {
         startTime: timeSlot,
-        duration: defaultDuration, // Now dynamic based on view
+        duration: defaultDuration,
         activity: '',
         description: '',
         isPriority: false,
         createdAt: Date.now(),
         date: showTomorrow ? tomorrow : today,
         userId: user.uid,
-        completed: false
+        completed: false,
+        day: dayOfWeek // Add the day property
       }
       setEditingTask(newTask)
       setShowTaskModal(true)
@@ -1058,7 +1045,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     
     const start = Math.min(selectionStart, selectionEnd)
     const end = Math.max(selectionStart, selectionEnd)
-    const duration = end - start + 0.5 // Add 0.5 to include the last time slot
+    const duration = end - start + 0.5
 
     // Check for overlapping tasks
     const hasOverlap = getCurrentTasks().some(task => {
@@ -1078,7 +1065,9 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       return
     }
 
-    const taskDate = showTomorrow ? tomorrow : today
+    const taskDate = showTomorrow ? addDays(new Date(), 1) : new Date();
+    const dayOfWeek = format(taskDate, 'EEEE').toLowerCase();
+
     const newTask: Task = {
       startTime: start,
       duration: duration,
@@ -1086,9 +1075,10 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       description: '',
       isPriority: false,
       createdAt: Date.now(),
-      date: taskDate,
+      date: showTomorrow ? tomorrow : today,
       userId: user.uid,
-      completed: false
+      completed: false,
+      day: dayOfWeek // Add the day property
     }
 
     setEditingTask(newTask)
@@ -1254,12 +1244,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     //   },
 
     // });
-    const response = await fetch('/api/notifications', {
+    const response = await fetch('/api/midnight-transfer-delete', {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${idtoken}`,
-        'Content-Type': 'application/json'
-      },
     });
 
     const data = await response.json();
@@ -1275,10 +1261,11 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   // Add the tomorrow view filter component
   const TomorrowViewFilter = () => (
     <div className={`
-      flex items-center gap-2 px-3 py-2 rounded-lg
+      sticky top-0 z-50 -mx-8 px-8 py-4
+      backdrop-blur-lg
       ${theme === 'dark'
-        ? 'bg-slate-800/50 border border-slate-700'
-        : 'bg-white/50 border border-slate-200'
+        ? 'bg-[#0B1120]/80'
+        : 'bg-[#F0F4FF]/80'
       }
     `}>
       <span className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -1635,6 +1622,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                   <button
                     onClick={() => {
                       setShowTomorrow(false)
+                      setIsSuggestionsExpandedToday(false)
+                      setIsSuggestionsExpandedTomorrow(false)
                       if (!showTomorrow) {
                         const currentHourElement = document.getElementById(`hour-${currentTime}`)
                         if (currentHourElement) {
@@ -1671,7 +1660,11 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                     Today
                   </button>
                   <button
-                    onClick={() => setShowTomorrow(true)}
+                    onClick={() => {
+                      setShowTomorrow(true)
+                      setIsSuggestionsExpandedTomorrow(false)
+                      setIsSuggestionsExpandedToday(false)
+                    }}
                     className={`
                       px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300
                       flex items-center gap-2 relative z-10
@@ -1891,17 +1884,20 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                 <AITaskSuggestions
                   theme={theme || 'light'}
                   isPremiumUser={isPremiumUser}
-                  isSuggestionsExpanded={isSuggestionsExpanded}
-                  setIsSuggestionsExpanded={setIsSuggestionsExpanded}
-                  suggestions={suggestions}
-                  isLoadingSuggestions={isLoadingSuggestions}
-                  loadSuggestions={loadSuggestions}
+                  isSuggestionsExpanded={isSuggestionsExpandedTomorrow}
+                  setIsSuggestionsExpanded={setIsSuggestionsExpandedTomorrow}
+                  suggestions={suggestionsTomorrow}
+                  isLoadingSuggestions={isLoadingSuggestionsTomorrow}
+                  loadSuggestions={loadSuggestionsTomorrow}
                   getCurrentTasks={getCurrentTasks}
                   setEditingTask={setEditingTask}
                   setShowTaskModal={setShowTaskModal}
                   setCurrentTasks={setCurrentTasks}
-                  setSuggestions={setSuggestions}
+                  setSuggestions={setSuggestionsTomorrow}
                   user={user as User}
+                  day={tomorrow}
+                  todayOrTomorrow='tomorrow'
+                  loadTasks={loadTasks}
                 />
                 <TomorrowViewFilter />
                 </>
@@ -1963,17 +1959,20 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             <AITaskSuggestions
                   theme={theme || 'light'}
                   isPremiumUser={isPremiumUser}
-                  isSuggestionsExpanded={isSuggestionsExpanded}
-                  setIsSuggestionsExpanded={setIsSuggestionsExpanded}
-                  suggestions={suggestions}
-                  isLoadingSuggestions={isLoadingSuggestions}
-                  loadSuggestions={loadSuggestions}
+                  isSuggestionsExpanded={isSuggestionsExpandedToday}
+                  setIsSuggestionsExpanded={setIsSuggestionsExpandedToday}
+                  suggestions={suggestionsToday}
+                  isLoadingSuggestions={isLoadingSuggestionsToday}
+                  loadSuggestions={loadSuggestionsToday}
                   getCurrentTasks={getCurrentTasks}
                   setEditingTask={setEditingTask}
                   setShowTaskModal={setShowTaskModal}
                   setCurrentTasks={setCurrentTasks}
-                  setSuggestions={setSuggestions}
+                  setSuggestions={setSuggestionsToday}
                   user={user as User}
+                  day={today}
+                  todayOrTomorrow='today'
+                  loadTasks={loadTasks}
                 />
           ): (<PremiumUpgradePrompt />))}
 

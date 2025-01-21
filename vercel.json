@@ -3,6 +3,9 @@
     "path": "/api/notifications",
     "schedule": "* * * * *"
   }, {
+    "path": "/api/midnight-transfer-delete",
+    "schedule": "0 * * * *"
+  }, {
     "path": "/api/weekly-analytics-email",
     "schedule": "0 8 * * 1"
   }]
