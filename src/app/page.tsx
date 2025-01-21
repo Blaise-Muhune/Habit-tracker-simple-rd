@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { format, addDays } from 'date-fns'
+import { format, addDays, subDays } from 'date-fns'
 import { motion } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { Sun, Moon } from 'lucide-react'
@@ -324,17 +324,11 @@ export default function DailyTaskManager() {
   // const [completedPriorities, setCompletedPriorities] = useState<number>(0)
   const [showFullSchedule, setShowFullSchedule] = useState(false)
   const [showDetailPopup, setShowDetailPopup] = useState(false)
-  const [suggestionsToday, setSuggestionsToday] = useState<SuggestedTask[]>([])
-  const [suggestionsTomorrow, setSuggestionsTomorrow] = useState<SuggestedTask[]>([])
-  const [isLoadingSuggestionsTomorrow, setIsLoadingSuggestionsTomorrow] = useState(false)
-  const [isLoadingSuggestionsToday, setIsLoadingSuggestionsToday] = useState(false)
 const [isStartTimePickerOpen, setIsStartTimePickerOpen] = useState(false)
 const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   // const [plannedHours, setPlannedHours] = useState(0);
   // const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null)
   // Add this state to manage the collapse state
-  const [isSuggestionsExpandedToday, setIsSuggestionsExpandedToday] = useState(false);
-  const [isSuggestionsExpandedTomorrow, setIsSuggestionsExpandedTomorrow] = useState(false);
   // Add this near the top where other state variables are defined
   const [isPremiumUser, setIsPremiumUser] = useState(false);
   const [toast, setToast] = useState<{
@@ -357,6 +351,15 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   const endTimeDropdownRef = useRef<HTMLDivElement>(null);
   const startTimeButtonRef = useRef<HTMLButtonElement>(null);
   const endTimeButtonRef = useRef<HTMLButtonElement>(null);
+
+  const [showPreviousDaySuggestions, setShowPreviousDaySuggestions] = useState(false)
+  const [suggestedTasks, setSuggestedTasks] = useState<Task[]>([])
+
+  // Add new state to track accepted suggestions
+  const [acceptedSuggestions, setAcceptedSuggestions] = useState<string[]>([])
+
+  // Add state to track saved suggestion IDs
+  const [savedSuggestionIds, setSavedSuggestionIds] = useState<Record<string, string>>({})
 
   const router = useRouter()
 
@@ -392,40 +395,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       }
     }
   }, [showTomorrow, isLoading, currentHour])
-
-  const PremiumUpgradePrompt = () => (
-    <div className={`
-      p-4 rounded-xl border-2 mb-6
-      ${theme === 'dark'
-        ? 'bg-violet-500/10 border-violet-500/20'
-        : 'bg-violet-50 border-violet-100'
-      }
-    `}>
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <p className={`font-medium ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}>
-            Unlock Premium Features
-          </p>
-          <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-            Get AI suggestions and advanced analytics
-          </p>
-        </div>
-        <Link
-          href="/premium"
-          className={`
-            px-4 py-2 rounded-lg text-sm font-medium
-            transition-all duration-200
-            ${theme === 'dark'
-              ? 'bg-violet-500 hover:bg-violet-600 text-white'
-              : 'bg-violet-600 hover:bg-violet-700 text-white'
-            }
-          `}
-        >
-          Upgrade to Pro
-        </Link>
-      </div>
-    </div>
-  )
 
     // Add this useEffect to handle click outside
     useEffect(() => {
@@ -468,14 +437,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     setShowTaskModal(false)
     setShowFullSchedule(false)
     setShowDetailPopup(false)
-    setSuggestionsToday([])
-    setSuggestionsTomorrow([])
-    setIsLoadingSuggestionsToday(false)
-    setIsLoadingSuggestionsTomorrow(false)
     setIsStartTimePickerOpen(false)
     setIsEndTimePickerOpen(false)
-    setIsSuggestionsExpandedToday(false)
-    setIsSuggestionsExpandedTomorrow(false)
     setIsPremiumUser(false)
     setToast(null)
     setSelectedTask(null)
@@ -485,6 +448,57 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     setTimeBlockView('hour')
     setTomorrowTimeBlockView('hour')
   }
+
+  const fetchPreviousDayTasks = useCallback(async () => {
+    if (!user) return
+
+    try {
+      // Always fetch for tomorrow's day, regardless of current view
+      const targetDay = format(addDays(new Date(), 1), 'EEEE').toLowerCase()
+      const targetDate = tomorrowDate
+
+      // Rest of the fetch logic remains the same
+      const fourWeeksAgo = subDays(new Date(), 28)
+      const tasksQuery = query(
+        collection(db, 'tasks'),
+        where('userId', '==', user.uid),
+        where('day', '==', targetDay),
+        where('createdAt', '>=', fourWeeksAgo.getTime()),
+        orderBy('createdAt', 'desc')
+      )
+
+      const snapshot = await getDocs(tasksQuery)
+      const previousTasks = snapshot.docs
+        .map(doc => ({ ...doc.data(), id: doc.id } as Task))
+        .filter(task => task.date !== targetDate)
+
+      // Prepare suggestions for tomorrow
+      const suggestions = previousTasks.map(task => ({
+        ...task,
+        id: undefined,
+        date: targetDate,
+        completed: false,
+        suggested: true,
+        day: targetDay,
+        userId: user.uid,
+        createdAt: Date.now()
+      }))
+
+      setSuggestedTasks(suggestions)
+    } catch (error) {
+      console.error('Error fetching previous day tasks:', error)
+      showToast('Failed to load task suggestions', 'error')
+    }
+  }, [user, tomorrowDate])
+
+  // Add effect to fetch suggestions when toggle is turned on
+  useEffect(() => {
+    if (showPreviousDaySuggestions) {
+      fetchPreviousDayTasks()
+    } else {
+      setSuggestedTasks([])
+    }
+  }, [showPreviousDaySuggestions, fetchPreviousDayTasks])
 
   useEffect(() => {
     if (user) {
@@ -720,91 +734,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     }
   }, [showTomorrow, user])
 
-  const loadSuggestionsTomorrow = useCallback(async () => {
-    if (!user) return;
-    
-    setIsLoadingSuggestionsTomorrow(true);
-    try {
-
-      const last7Days = Array.from({ length: 7 }, (_, i) => 
-        formatDate(addDays(new Date(), -(i + 1)))
-      )
-
-      const historicalTasksQuery = query(
-        collection(db, 'tasks'),
-        where('userId', '==', user.uid),
-        where('date', 'in', last7Days),
-        limit(30)
-      )
-
-      const snapshot = await getDocs(historicalTasksQuery)
-      const historicalTasks = snapshot.docs.map(doc => ({
-        ...doc.data()
-      })) as Task[]
-      
-      const response = await fetch(process.env.NEXT_PUBLIC_API_URL + '/api/generate-suggestions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          historicalTasks,
-          userId: user.uid,
-          day: tomorrow,
-          todayOrTomorrow: 'tomorrow'
-        }),
-      });
-      
-      if (!response.ok) throw new Error('Failed to generate suggestions');
-      const newSuggestions = await response.json();
-      setSuggestionsTomorrow(newSuggestions);
-    } catch (error) {
-      console.error('Error loading suggestions:', error);
-    } finally {
-      setIsLoadingSuggestionsTomorrow(false);
-    }
-  }, [user]);
-
-  const loadSuggestionsToday = useCallback(async () => {
-    if (!user) return;
-    
-    setIsLoadingSuggestionsToday(true);
-    try {
-
-      const last7Days = Array.from({ length: 7 }, (_, i) => 
-        formatDate(addDays(new Date(), -(i + 1)))
-      )
-
-      const historicalTasksQuery = query(
-        collection(db, 'tasks'),
-        where('userId', '==', user.uid),
-        where('date', 'in', last7Days),
-        limit(30)
-      )
-
-      const snapshot = await getDocs(historicalTasksQuery)
-      const historicalTasks = snapshot.docs.map(doc => ({
-        ...doc.data()
-      })) as Task[]
-      
-      const response = await fetch(process.env.NEXT_PUBLIC_API_URL + '/api/generate-suggestions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          historicalTasks,
-          userId: user.uid,
-          day: today,
-          todayOrTomorrow: 'today'
-        }),
-      });
-      
-      if (!response.ok) throw new Error('Failed to generate suggestions');
-      const newSuggestions = await response.json();
-      setSuggestionsToday(newSuggestions);
-    } catch (error) {
-      console.error('Error loading suggestions:', error);
-    } finally {
-      setIsLoadingSuggestionsToday(false);
-    }
-  }, [user]);
 
   // First, update the generateTimeOptions function to include all 15-minute intervals
   const generateTimeOptions = () => {
@@ -904,6 +833,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       setShowTaskModal(false);
       setEditingTask(null);
       showToast('Task saved successfully', 'success');
+      return task
     } catch (error) {
       console.error('Error saving task:', error);
       showToast('Failed to save task', 'error');
@@ -1310,7 +1240,9 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         >
           30 Min
         </button>
+      <SuggestionsToggle />
       </div>
+
     </div>
   )
 
@@ -1329,6 +1261,275 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
   // Add this useEffect for initial scroll to current time
   
+
+  // Add new state variables
+
+
+  // Add this function to fetch tasks from previous similar days
+  
+
+  // Modify handleAcceptSuggestion to directly save to Firebase and update state
+  const handleAcceptSuggestion = async (suggestedTask: Task) => {
+    try {
+      const { id, ...taskWithoutId } = suggestedTask
+      const newTask = {
+        ...taskWithoutId,
+        date: tomorrowDate,
+        userId: user?.uid,
+        createdAt: Date.now(),
+        completed: false,
+        isPriority: false
+      }
+
+      // Save to Firebase and update tomorrow's tasks
+      await saveTask(newTask as Task)
+      
+      // Remove from suggestions
+      setSuggestedTasks(prev => prev.filter(t => 
+        t.activity !== suggestedTask.activity || 
+        t.startTime !== suggestedTask.startTime
+      ))
+      
+      showToast('Task added successfully', 'success')
+    } catch (error) {
+      console.error('Error accepting suggested task:', error)
+      showToast('Failed to add task', 'error')
+    }
+  }
+
+  // Add this near your other JSX components
+  const SuggestionsToggle = () => (
+      <div className={`
+        flex items-center gap-2 px-4 py-2 rounded-lg
+        ${theme === 'dark' 
+          ? 'bg-slate-800/50 border border-slate-700' 
+          : 'bg-white/50 border border-slate-200'
+        }
+      `}>
+        <span className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+          Show Previous {format(addDays(new Date(), 1), 'EEEE')} Tasks
+        </span>
+        <button
+          onClick={() => setShowPreviousDaySuggestions(!showPreviousDaySuggestions)}
+          className={`
+            relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full 
+            transition-colors duration-200 ease-in-out
+            ${showPreviousDaySuggestions
+              ? theme === 'dark' ? 'bg-blue-500' : 'bg-blue-600'
+              : theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'
+            }
+          `}
+        >
+          <span className={`
+            pointer-events-none inline-block h-5 w-5 transform rounded-full 
+            bg-white shadow ring-0 transition duration-200 ease-in-out
+            ${showPreviousDaySuggestions ? 'translate-x-5' : 'translate-x-0'}
+          `} />
+        </button>
+      </div>
+  )
+  // Modify your task rendering to include suggested tasks
+  const renderTimeSlot = (timeSlot: number) => {
+    const isPastTimeSlot = !showTomorrow && timeSlot < currentHour;
+    const task = getTaskAtHour(timeSlot)
+    const suggestedTask = showPreviousDaySuggestions && 
+      suggestedTasks.find(t => t.startTime === timeSlot && !getCurrentTasks().some(ct => 
+        ct.startTime === t.startTime && ct.activity === t.activity
+      ))
+
+    if (isHourPartOfTask(timeSlot)) return null
+
+    // If there's a real task, render it normally
+    if (task) {
+      return (
+        <motion.div 
+          key={timeSlot}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          onClick={(e) => {
+            if (!(e.target as HTMLElement).closest('button')) {
+              handleTaskClick(task);
+            }
+          }}
+          className={`
+            group relative rounded-xl border-2 backdrop-blur-sm
+            transition-all duration-300 hover:scale-[1.02] cursor-pointer
+            ${task.completed ? 'opacity-50' : isPastTimeSlot ? 'opacity-50' : ''}
+            ${task.isPriority
+              ? theme === 'dark'
+                ? 'border-blue-500/50 bg-blue-950/50'
+                : 'border-blue-200 bg-blue-50/50'
+              : theme === 'dark'
+                ? 'border-slate-700 bg-slate-800/50'
+                : 'border-slate-200 bg-white/50'
+            }
+          `}
+          style={{ 
+            minHeight: `${task.duration * 3.5}rem`,
+            height: 'auto'
+          }}
+        >
+          <div className="pl-12 sm:pl-20 pr-12 py-2 sm:py-3 min-h-full flex flex-col relative">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium">{task.activity}</h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleTaskComplete(task)}
+                  className={`p-1 rounded-lg transition-colors
+                    ${theme === 'dark'
+                      ? 'hover:bg-green-500/20 text-green-400'
+                      : 'hover:bg-green-100 text-green-600'
+                    }
+                    ${task.completed ? 'opacity-100' : 'opacity-50 hover:opacity-100'}
+                  `}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => handlePriorityToggle(task)}
+                  className={`p-1 rounded-lg transition-colors
+                    ${theme === 'dark'
+                      ? 'hover:bg-blue-500/20 text-blue-400'
+                      : 'hover:bg-blue-100 text-blue-600'
+                    }
+                    ${task.isPriority ? 'opacity-100' : 'opacity-50 hover:opacity-100'}
+                  `}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                          d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                        />
+                      </svg>
+                </button>
+                <button
+                  onClick={() => handleTaskDelete(task)}
+                  className={`p-1 rounded-lg transition-colors
+                    ${theme === 'dark'
+                      ? 'bg-red-500/20 text-red-400'
+                      : 'hover:bg-red-100 text-red-600'
+                    }
+                    opacity-50 hover:!opacity-100
+                  `}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            {task.description && (
+              <p className="mt-1 text-sm opacity-75">{task.description}</p>
+            )}
+          </div>
+        </motion.div>
+      )
+    }
+
+    // If there's a suggested task and suggestions are enabled, render it
+    if (suggestedTask) {
+      const isSaved = getCurrentTasks().some(t => 
+        t.activity === suggestedTask.activity && 
+        t.startTime === suggestedTask.startTime
+      )
+
+      // If task is already saved, don't render it again
+      if (isSaved) return null
+
+      return (
+        <motion.div 
+          key={`suggested-${timeSlot}`}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`
+            group relative rounded-xl border-2 border-dashed
+            transition-all duration-300 opacity-60 hover:opacity-100
+            ${theme === 'dark'
+              ? 'border-slate-600 bg-slate-800/30'
+              : 'border-slate-300 bg-slate-50/30'
+            }
+          `}
+          style={{ 
+            minHeight: `${suggestedTask.duration * 3.5}rem`,
+            height: 'auto'
+          }}
+        >
+          <div className="pl-12 sm:pl-20 pr-12 py-2 sm:py-3 min-h-full flex flex-col relative">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm opacity-75">
+                  Suggested from previous {format(new Date(suggestedTask.date), 'EEEE')}
+                </span>
+                <h3 className="text-lg font-medium mt-1">{suggestedTask.activity}</h3>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleAcceptSuggestion(suggestedTask)}
+                  className={`p-1 rounded-lg transition-colors
+                    ${theme === 'dark'
+                      ? 'hover:bg-green-500/20 text-green-400'
+                      : 'hover:bg-green-100 text-green-600'
+                    }
+                  `}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setSuggestedTasks(prev => prev.filter(t => 
+                      t.activity !== suggestedTask.activity || 
+                      t.startTime !== suggestedTask.startTime
+                    ))
+                  }}
+                  className={`p-1 rounded-lg transition-colors
+                    ${theme === 'dark'
+                      ? 'hover:bg-red-500/20 text-red-400'
+                      : 'hover:bg-red-100 text-red-600'
+                    }
+                  `}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            {suggestedTask.description && (
+              <p className="mt-1 text-sm opacity-75">{suggestedTask.description}</p>
+            )}
+          </div>
+        </motion.div>
+      )
+    }
+
+    // Otherwise render empty time slot
+    return (
+  <div
+    key={timeSlot}
+    onClick={() => handleHourClick(timeSlot)}
+    className={`
+      relative rounded-xl border-2 border-dashed transition-colors cursor-pointer
+      ${isHourSelected(timeSlot)
+        ? theme === 'dark'
+          ? 'border-blue-500/50 bg-blue-950/50'
+          : 'border-blue-200 bg-blue-50/50'
+        : theme === 'dark'
+          ? 'border-slate-700/50 hover:border-slate-600'
+          : 'border-slate-200/50 hover:border-slate-300'
+      }
+    `}
+  >
+    <div className="pl-12 sm:pl-20 pr-4 py-2 sm:py-3">
+      <span className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+        {formatTime(timeSlot)}
+      </span>
+    </div>
+  </div>
+)
+  }
 
   return (
     <div className={`h-screen overflow-auto ${theme === 'dark' 
@@ -1628,8 +1829,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                   <button
                     onClick={() => {
                       setShowTomorrow(false)
-                      setIsSuggestionsExpandedToday(false)
-                      setIsSuggestionsExpandedTomorrow(false)
+                      setShowPreviousDaySuggestions(false)
                       if (!showTomorrow) {
                         const currentHourElement = document.getElementById(`hour-${currentHour}`)
                         if (currentHourElement) {
@@ -1668,8 +1868,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                   <button
                     onClick={() => {
                       setShowTomorrow(true)
-                      setIsSuggestionsExpandedTomorrow(false)
-                      setIsSuggestionsExpandedToday(false)
+                      setShowPreviousDaySuggestions(false)
                     }}
                     className={`
                       px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300
@@ -1708,6 +1907,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
                     )}
                   </button>
+
                   {/* Add this near your other main navigation buttons */}
                   {(
                     <Link
@@ -1881,38 +2081,11 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             </div>
           </div>
 
-          {/* AI Suggestions Section - Now positioned right after stats */}
-          {showTomorrow === null&& (
-            <>
-              {/* AI Suggestions Section */}
-              {isPremiumUser ? (
-                <>
-                <AITaskSuggestions
-                  theme={theme || 'light'}
-                  isPremiumUser={isPremiumUser}
-                  isSuggestionsExpanded={isSuggestionsExpandedTomorrow}
-                  setIsSuggestionsExpanded={setIsSuggestionsExpandedTomorrow}
-                  suggestions={suggestionsTomorrow}
-                  isLoadingSuggestions={isLoadingSuggestionsTomorrow}
-                  loadSuggestions={loadSuggestionsTomorrow}
-                  getCurrentTasks={getCurrentTasks}
-                  setEditingTask={setEditingTask}
-                  setShowTaskModal={setShowTaskModal}
-                  setCurrentTasks={setCurrentTasks}
-                  setSuggestions={setSuggestionsTomorrow}
-                  user={user as User}
-                  day={tomorrow}
-                  todayOrTomorrow='tomorrow'
-                  loadTasks={loadTasks}
-                />
-                <TomorrowViewFilter />
-                </>
-
-              ) : (
-                <PremiumUpgradePrompt />
-              )}
-            </>
+          {showTomorrow && (
+            <TomorrowViewFilter />
           )}
+
+
 
           {/* Add suggestion button when in Today view */}
           {!showTomorrow && !showFullSchedule && (
@@ -1959,28 +2132,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             </div>
           )}
 
-          {/* Show AI Suggestions when in edit mode for Today */}
-          {!showTomorrow === null && showFullSchedule && (
-          ( isPremiumUser) ?(
-            <AITaskSuggestions
-                  theme={theme || 'light'}
-                  isPremiumUser={isPremiumUser}
-                  isSuggestionsExpanded={isSuggestionsExpandedToday}
-                  setIsSuggestionsExpanded={setIsSuggestionsExpandedToday}
-                  suggestions={suggestionsToday}
-                  isLoadingSuggestions={isLoadingSuggestionsToday}
-                  loadSuggestions={loadSuggestionsToday}
-                  getCurrentTasks={getCurrentTasks}
-                  setEditingTask={setEditingTask}
-                  setShowTaskModal={setShowTaskModal}
-                  setCurrentTasks={setCurrentTasks}
-                  setSuggestions={setSuggestionsToday}
-                  user={user as User}
-                  day={today}
-                  todayOrTomorrow='today'
-                  loadTasks={loadTasks}
-                />
-          ): (<PremiumUpgradePrompt />))}
 
           {/* Task list with gaming aesthetic */}
           <div className="relative">
@@ -2092,6 +2243,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                           30 Min
                         </button>
                       </div>
+                  <SuggestionsToggle />
+
                     </div>
                   </div>
                 </div>
@@ -2100,261 +2253,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
             {/* Your existing tasks grid */}
             <div className="space-y-2 tour-timeline">
-              {getVisibleHours().map((timeSlot) => {
-                const task = getTaskAtHour(timeSlot)
-                const isCurrentTimeSlot = !showTomorrow && timeSlot === Math.floor(currentHour * 2) / 2
-                const isPastTimeSlot = !showTomorrow && timeSlot < currentHour
-
-                if (isHourPartOfTask(timeSlot)) return null
-
-                return task ? (
-                  <motion.div 
-                    key={timeSlot}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    onClick={(e) => {
-                      if (!(e.target as HTMLElement).closest('button')) {
-                        handleTaskClick(task);
-                      }
-                    }}
-                    className={`
-                      group relative rounded-xl border-2 backdrop-blur-sm
-                      transition-all duration-300 hover:scale-[1.02] cursor-pointer
-                      ${task.completed ? 'opacity-50' : isPastTimeSlot ? 'opacity-50' : ''}
-                      ${(!showTomorrow && (
-                        isCurrentTimeSlot || 
-                        (currentHour >= task.startTime && currentHour < (task.startTime + task.duration))
-                      )) ? 'ring-2 ring-offset-2 ring-red-500 ring-offset-black' : ''}
-                      ${task.isPriority
-                        ? theme === 'dark'
-                          ? 'border-blue-500/50 bg-blue-950/50'
-                          : 'border-blue-200 bg-blue-50/50'
-                        : theme === 'dark'
-                          ? 'border-slate-700 bg-slate-800/50'
-                          : 'border-slate-200 bg-white/50'
-                      }
-                    `}
-                    style={{ 
-                      minHeight: `${task.duration * 3.5}rem`,
-                      height: 'auto',
-                      zIndex: showTaskModal ? 0 : 10
-                    }}
-                  >
-                    <div className="pl-12 sm:pl-20 pr-12 py-2 sm:py-3 min-h-full flex flex-col relative">
-                      {/* Time and completion status */}
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        
-                        <div className="flex items-center gap-2">
-                          <div className={`text-xs sm:text-sm font-medium whitespace-nowrap
-                            ${isCurrentTimeSlot 
-                              ? theme === 'dark' ? 'text-red-400' : 'text-red-600'
-                              : theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
-                            }`}
-                          >
-                            {`${formatTime(task.startTime)} - ${formatTime(task.startTime + task.duration)}`}
-                          </div>
-                          {task.isPriority && (
-                            <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-                            </svg>
-                          )}
-                        </div>
-                        {!showTomorrow && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleTaskComplete(task)
-                            }}
-                            className={`
-                              p-3 rounded-lg transition-colors flex items-center gap-2
-                              ${task.completed
-                                ? theme === 'dark'
-                                  ? 'bg-green-500/20 text-green-400'
-                                  : 'bg-green-100 text-green-600'
-                                : theme === 'dark'
-                                  ? 'bg-slate-700 text-slate-400'
-                                  : 'bg-slate-100 text-slate-600'
-                              }
-                            `}
-                            title={task.completed ? "Mark as Incomplete" : "Mark as Complete"}
-                          >
-                            <svg 
-                              className="w-5 h-5" 
-                              fill="none" 
-                              viewBox="0 0 24 24" 
-                              stroke="currentColor"
-                              strokeWidth={2}
-                            >
-                              <path 
-                                strokeLinecap="round" 
-                                strokeLinejoin="round" 
-                                d={task.completed 
-                                  ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                  : "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                                }
-                              />
-                            </svg>
-                            <span className="font-medium">
-                              {task.completed ? "Done" : "Complete"}
-                            </span>
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Task content with strike-through if completed */}
-                      <div className="flex-1 flex flex-col min-h-0 mb-8">
-                        <h3 className={`
-                          text-base sm:text-lg font-medium
-                          ${!showTomorrow && task.completed ? 'line-through opacity-50' : ''}
-                          ${theme === 'dark' 
-                            ? 'text-white' 
-                            : 'text-zinc-900'
-                          }
-                        `}>
-                          {task.activity || (
-                            <span className={`italic ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
-                              Click hour to add task
-                            </span>
-                          )}
-                        </h3>
-                        {task.description && (
-                          <p className={`
-                            text-sm mt-1
-                            ${!showTomorrow && task.completed ? 'line-through opacity-50' : ''}
-                            ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
-                          `}>
-                            {task.description && truncateText(task.description)}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Action buttons - Updated to stop event propagation */}
-                      {(showTomorrow || showFullSchedule) && (
-                        <div className="absolute bottom-2 right-2 flex gap-2  bg-inherit"
-                        >
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handlePriorityToggle(task)
-                            }}
-                            className={`
-                              p-1.5 rounded-lg transition-colors
-                              ${task.isPriority
-                                ? theme === 'dark'
-                                  ? 'bg-blue-500/30 text-blue-400'
-                                  : 'bg-blue-100 text-blue-600'
-                                : theme === 'dark'
-                                  ? 'bg-slate-700 text-slate-400'
-                                  : 'bg-slate-100 text-slate-600'
-                              }
-                            `}
-                            title="Toggle Priority"
-                          >
-                            <svg className="w-4 h-4" fill={task.isPriority ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-                              />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleTaskDelete(task)
-                            }}
-                            className={`
-                              p-1.5 rounded-lg transition-colors
-                              ${theme === 'dark'
-                                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                                : 'bg-red-50 text-red-600 hover:bg-red-100'
-                              }
-                            `}
-                            title="Delete Task"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
-                                />
-                            </svg>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Add a "Current" indicator if this task includes the current hour */}
-                    {!showTomorrow && currentHour >= task.startTime && currentHour < (task.startTime + task.duration) && (
-                      <div className={`
-                        absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium
-                        ${theme === 'dark' 
-                          ? 'bg-red-500/20 text-red-400' 
-                          : 'bg-red-50 text-red-600'
-                        }
-                      `}>
-                        Current
-                      </div>
-                    )}
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key={`empty-${timeSlot}`}
-                    id={`hour-${timeSlot}`}  // Add this ID
-                    onClick={(e) => {
-                      e.preventDefault()
-                      if (canModifyTasks()) {
-                        handleHourClick(timeSlot)
-                      }
-                    }}
-                    className={`
-                      h-8 sm:h-10 flex items-center pl-12 sm:pl-20 rounded-xl border-2 
-                      cursor-${canModifyTasks() ? 'pointer' : 'default'} transition-all duration-300
-                      ${isPastTimeSlot ? 'opacity-30' : ''}
-                      ${isCurrentTimeSlot 
-                        ? theme === 'dark'
-                          ? 'border-red-500/50 bg-red-500/10 ring-2 ring-offset-2 ring-red-500 ring-offset-black'
-                          : 'border-red-200 bg-red-50 ring-2 ring-offset-2 ring-red-500'
-                        : isHourSelected(timeSlot)
-                          ? theme === 'dark'
-                            ? 'border-blue-500 bg-blue-500/20'
-                            : 'border-blue-500 bg-blue-50'
-                          : theme === 'dark'
-                            ? 'border-slate-700 bg-slate-800/30 hover:bg-slate-700/50'
-                            : 'border-slate-200 bg-white/30 hover:bg-slate-50'
-                      }
-                    `}
-                    whileHover={{ scale: canModifyTasks() ? 1.02 : 1 }}
-                  >
-                    <div className="flex items-center gap-2">
-                        <span className={`text-xs sm:text-sm font-medium`}>
-                          {formatTime(timeSlot)}
-                        </span>
-                        {isCurrentTimeSlot && (
-                          <div className="flex items-center gap-2">
-                            <span className={`
-                              text-xs px-2 py-0.5 rounded-full animate-pulse
-                            ${theme === 'dark' 
-                                ? 'bg-red-500/20 text-red-400' 
-                                : 'bg-red-50 text-red-600'
-                              }
-                            `}>
-                              Now
-                            </span>
-                            {/* Add "Next Task" indicator if applicable */}
-                            {!showTomorrow && !task && (
-                              <span className={`
-                                text-xs
-                                ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
-                              `}>
-                                {getNextTask(timeSlot)
-                                  ? `Next: ${getNextTask(timeSlot)?.activity} at ${formatTime(getNextTask(timeSlot)?.startTime || 0)}`
-                                  : 'No upcoming tasks'
-                                }
-                              </span>
-                            )}
-                          </div>
-                        )}
-                    </div>
-                  </motion.div>
-                )}
-              )}
+              {getVisibleHours().map(timeSlot => renderTimeSlot(timeSlot))}
             </div>
           </div>
         </div>
