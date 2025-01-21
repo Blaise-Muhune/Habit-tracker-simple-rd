@@ -1,6 +1,6 @@
 import { adminAuth } from '@/lib/firebase-admin';
 import { db } from '@/lib/firebase';
-import { collection, query, getDocs, where, getDoc, doc } from 'firebase/firestore';
+import { getDoc, doc } from 'firebase/firestore';
 import { NextResponse } from 'next/server';
 
 async function sendWeeklyAnalyticsEmail(email: string) {
