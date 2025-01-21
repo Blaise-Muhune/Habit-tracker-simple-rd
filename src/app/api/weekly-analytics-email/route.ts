@@ -190,7 +190,7 @@ export async function GET(request: Request) {
       completionRate
     };
 
-    const emailResult = await sendWeeklyAnalyticsEmail(userPrefs.email, userData);
+    const emailResult = await sendWeeklyAnalyticsEmail(userPrefs.email);
     console.log('🏁 Weekly analytics email process completed for user:', userId);
 
     return NextResponse.json({ success: true, result: emailResult });
