@@ -2397,10 +2397,9 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             </div>
 
             {/* Task Form */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="p-6 space-y-6">
-                {/* Time Selection */}
-                <div className="space-y-2">
+            <div className="p-6 space-y-6">
+              {/* Time Selection */}
+              <div className="space-y-2">
                 <label className={`block text-sm font-medium
                   ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
                 `}>
@@ -2624,17 +2623,9 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                 />
               </div>
             </div>
-            </div>{ /* added this here*/}
-
 
             {/* Action Buttons */}
-            <div className={`
-        px-6 py-4 border-t flex justify-end gap-3 sticky bottom-0
-        ${theme === 'dark' 
-          ? 'bg-slate-900 border-slate-800' 
-          : 'bg-white border-slate-200'
-        }
-      `}>
+            <div className="flex justify-end gap-3">
               <button
                 onClick={() => {
                   setShowTaskModal(false)

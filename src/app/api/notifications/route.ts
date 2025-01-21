@@ -20,7 +20,8 @@ webpush.setVapidDetails(
 async function sendEmailNotification(task: Task, email: string, reminderTime: number) {
   console.log('📧 Attempting email notification:', { taskId: task.id, email });
   try {
-    const response = await fetch(new URL('/api/send-reminder', process.env.NEXT_PUBLIC_APP_URL as string || 'https://simple-r.vercel.app').toString(), {
+    // Call your email endpoint
+    const response = await fetch(new URL('/api/send-reminder', 'https://simple-r.vercel.app').toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -301,27 +302,6 @@ function getUserLocalTime(userTimezone: string) {
   };
 }
 
-function calculateNotificationTime(startTime: number, reminderMinutes: number) {
-  // Convert decimal time to hours and minutes
-  const startHours = Math.floor(startTime);
-  const startMinutes = Math.round((startTime % 1) * 60);
-  
-  // Calculate notification time by subtracting reminder minutes
-  let notificationMinutes = startMinutes - reminderMinutes;
-  let notificationHours = startHours;
-  
-  // Handle minute underflow
-  if (notificationMinutes < 0) {
-    notificationHours -= 1;
-    notificationMinutes += 60;
-  }
-  
-  return {
-    hour: notificationHours,
-    minute: notificationMinutes
-  };
-}
-
 export async function POST(request: Request) {
   console.log('request base url', request.url)
   console.log('🔄 POST request received');
@@ -370,22 +350,17 @@ export async function POST(request: Request) {
         continue;
       }
 
-    
-
-      // Calculate notification time
-      const { hour: notificationHour, minute: notificationMinute } = calculateNotificationTime(
-        task.startTime,
-        userPrefs.reminderTime || 10
-      );
-
       console.log('📝 Processing task:', {
         taskId: taskDoc.id,
         activity: task.activity,
         startTime: task.startTime,
         userTimezone,
-        userLocalTime: `${currentHour}:${currentMinute}`,
-        notificationTime: `${notificationHour}:${notificationMinute}`
+        userLocalTime: `${currentHour}:${currentMinute}`
       });
+
+      // Calculate notification time
+      const notificationHour = task.startTime - 1;
+      const notificationMinute = 60 - (userPrefs.reminderTime || 10);
 
       if (currentHour === notificationHour && currentMinute === notificationMinute) {
         console.log('🔔 Sending notifications for task:', taskDoc.id);
@@ -503,27 +478,23 @@ export async function GET() {
         continue;
       }
 
-      
-
-      // Calculate notification time
-      const { hour: notificationHour, minute: notificationMinute } = calculateNotificationTime(
-        task.startTime,
-        userPrefs.reminderTime || 10
-      );
       console.log('📝 Processing task:', {
         taskId: taskDoc.id,
         activity: task.activity,
         startTime: task.startTime,
         userTimezone,
-        userLocalTime: `${currentHour}:${currentMinute}`,
-        notificationTime: `${notificationHour}:${notificationMinute}`
+        userLocalTime: `${currentHour}:${currentMinute}`
       });
+
+      // Calculate notification time
+      const notificationHour = task.startTime - 1;
+      const notificationMinute = 60 - (userPrefs.reminderTime || 10);
+
       if (currentHour === notificationHour && currentMinute === notificationMinute) {
         console.log('🔔 Sending notifications for task:', taskDoc.id);
 
         const notificationResults = [];
 
-        
         // Email notification
         if (userPrefs.emailReminders && userPrefs.email) {
           const emailResult = await sendEmailNotification(task as Task, userPrefs.email, userPrefs?.reminderTime);
