@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { format, addDays, subDays } from 'date-fns'
+import { format, addDays } from 'date-fns'
 import { motion } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { Sun, Moon } from 'lucide-react'
@@ -1291,6 +1291,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         completed: false,
         isPriority: false
       }
+      console.log(':Id removed', id)
 
       // Save to Firebase and update tomorrow's tasks
       await saveTask(newTask as Task)

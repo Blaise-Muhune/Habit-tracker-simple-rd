@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { initAdmin } from '@/lib/firebase-admin'
 import OpenAI from 'openai'
-import { addDays, format, subDays } from 'date-fns'
+import { format, subDays } from 'date-fns'
 import { Task } from '@/types'
 
 const { db } = initAdmin()
@@ -108,7 +108,7 @@ export async function GET() {
         console.log('✨ ChatGPT Response:', analysis)
 
         // Save suggestions to Firebase
-        const suggestions = analysis.suggestions.map((suggestion: any) => ({
+        const suggestions = analysis.suggestions.map((suggestion:Task) => ({
           ...suggestion,
           userId,
           day,
