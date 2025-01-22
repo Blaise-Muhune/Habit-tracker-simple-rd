@@ -1091,44 +1091,56 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     // Today/Tomorrow toggle
     {
       element: '.tour-toggle',
-      title: 'Switch Views',
-      description: 'Toggle between Today and Tomorrow to manage your current tasks or plan ahead.'
+      title: 'Switch Between Views',
+      description: 'Toggle between Today and Tomorrow views. Today shows your current schedule, while Tomorrow lets you plan ahead. The current time is automatically highlighted in Today view.'
     },
     // Stats overview
     {
       element: '.tour-stats',
       title: 'Track Your Progress',
-      description: 'Monitor your daily progress and completed tasks at a glance.'
+      description: 'Monitor your daily progress here. See completed tasks, priority items, and total hours planned. The stats update automatically as you manage your tasks.'
     },
     // Timeline - Today view
     {
       element: '.tour-timeline',
-      title: 'Your Schedule',
-      description: 'This is your daily timeline. Click any hour to add a new task, or drag across multiple hours for longer tasks.'
+      title: 'Your Schedule Timeline',
+      description: 'This is your daily timeline. In Today view, you\'ll see your current time highlighted. Tasks are color-coded: blue for regular tasks, purple for priorities, and completed tasks are faded.'
+    },
+    // View options
+    {
+      element: '.tour-view-options',
+      title: 'Customize Your View',
+      description: 'Switch between 1-hour and 30-minute time slots for more precise scheduling. AI suggestions are available for premium users to help plan your day.'
     },
     // Task interaction
     {
       element: '.tour-task',
       title: 'Task Management',
-      description: 'Click on any task to view details, edit, mark as complete, or delete it. You can also drag tasks to reschedule them.'
+      description: 'Click any task to view details or edit. Mark tasks as complete, set priorities, or delete them. In Tomorrow view, you can drag tasks to reschedule them.'
+    },
+    // Priority system
+    {
+      element: '.tour-priority',
+      title: 'Priority System',
+      description: 'Mark up to 3 important tasks as priorities. They\'ll be highlighted and tracked separately in your stats. Complete priority tasks first for better productivity.'
     },
     // AI Suggestions
     {
       element: '.tour-ai',
       title: 'AI Task Suggestions',
-      description: 'Get personalized task suggestions powered by AI to help you plan your day more effectively (Premium feature).'
-    },
-    // Premium features
-    {
-      element: '.tour-premium',
-      title: 'Premium Features',
-      description: 'Upgrade to Premium to unlock AI suggestions, advanced analytics, and more powerful planning tools.'
+      description: 'Premium users get smart task suggestions based on their patterns. The AI learns from your schedule to help you plan more effectively.'
     },
     // Theme toggle
     {
       element: '.tour-theme',
-      title: 'Customize Your View',
-      description: 'Switch between light and dark mode for your preferred viewing experience.'
+      title: 'Personalize Your Experience',
+      description: 'Switch between light and dark modes for your preferred viewing experience. Your choice is remembered across sessions.'
+    },
+    // Final step
+    {
+      element: '.tour-header',
+      title: 'You\'re All Set!',
+      description: 'Start by adding tasks to your schedule. Remember to check your progress and update task statuses throughout the day. Need help? Click the user menu for more options.'
     }
   ]
 
@@ -1410,60 +1422,70 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         className={`
           group relative rounded-xl border-2 backdrop-blur-sm
           transition-all duration-300 hover:scale-[1.02] cursor-pointer
+          shadow-sm hover:shadow-md
           ${task.completed ? 'opacity-20' : isPastTimeSlot ? 'opacity-50' : ''}
-          ${isActiveTask ? 'ring-2 ring-offset-2 ring-red-500 shadow-lg' : ''}
+          ${isActiveTask ? 'ring-2 ring-red-500 shadow-lg' : ''}
           ${task.isPriority
             ? theme === 'dark'
-              ? 'border-blue-500/50 bg-blue-950/50'
-              : 'border-blue-200 bg-blue-50/50'
+              ? 'border-blue-500/50 bg-gradient-to-br from-blue-950/50 to-slate-900/50'
+              : 'border-blue-200 bg-gradient-to-br from-blue-50/90 to-white'
             : theme === 'dark'
-              ? 'border-slate-700 bg-slate-800/50'
-              : 'border-slate-200 bg-white/50'
+              ? 'border-slate-700 bg-gradient-to-br from-slate-800/50 to-slate-900/50'
+              : 'border-slate-200 bg-gradient-to-br from-slate-50/90 to-white'
           }
           ${task.completed 
-          ? theme === 'dark'
-          ? 'border-sky-500/50 bg-sky-950/50'
-          : 'border-sky-200 bg-sky-50/50'
-        : ''}
+            ? theme === 'dark'
+              ? 'border-sky-500/50 bg-gradient-to-br from-sky-950/50 to-slate-900/50'
+              : 'border-sky-200 bg-gradient-to-br from-sky-50/90 to-white'
+            : ''
+          }
         `}
         style={{ 
           minHeight: `${task.duration * 3.5}rem`,
           height: 'auto'
         }}
       >
+        {/* Time indicator with gradient line */}
         <div className={`
-          absolute left-0 top-0 px-3 py-1 rounded-tl-xl rounded-br-xl text-xs font-medium
-          ${theme === 'dark' 
-            ? ' text-slate-400' 
-            : ' text-slate-600'
-          }
+          absolute left-0 top-1/2 -translate-y-1/2 px-3 py-1.5 
+          rounded-r-xl text-xs font-medium flex flex-col items-center
+          ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
         `}>
-          <div className="flex flex-col items-center ">
-         <div>{formatTime(task.startTime)} </div>  
-         <div> | </div>
-         <div> {formatTime(task.startTime + task.duration)} </div>
-         </div>
+          <div>{formatTime(task.startTime)}</div>
+          <div className={`w-0.5 h-4 my-1 rounded-full
+            ${task.isPriority
+              ? theme === 'dark'
+                ? 'bg-gradient-to-b from-blue-500 to-transparent'
+                : 'bg-gradient-to-b from-blue-400 to-transparent'
+              : theme === 'dark'
+                ? 'bg-gradient-to-b from-slate-400 to-transparent'
+                : 'bg-gradient-to-b from-slate-500 to-transparent'
+            }
+          `}></div>
+          <div>{formatTime(task.startTime + task.duration)}</div>
         </div>
          {/* Add Now indicator for active tasks */}
       {isActiveTask && (
         <div className={`
-          absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1
-          flex items-center gap-2 px-3 py-1 rounded-r-full
-          ${theme === 'dark' ? 'bg-blue-500/20' : 'bg-blue-50'}
+          absolute right-0 top-1 -translate-y-1/2 -translate-x-1
+          flex items-center  py-1 rounded-r-full
           z-10
         `}>
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          <span className={`text-xs font-medium
-            ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}
-          `}>
-            Now
-          </span>
+         
         </div>
       )}
-          <div className="pl-12 sm:pl-20 pr-1 py-2 sm:py-3 min-h-full flex flex-col relative">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium px-1">{task.activity}</h3>
-              <div className="flex gap-2 items-center">
+          <div className="pl-14 sm:pl-20 pr-4 py-3 min-h-full flex flex-col relative">
+          <div className="flex items-center justify-between gap-4">
+            <h3 className={`text-lg font-medium px-1 transition-colors
+              ${task.isPriority 
+                ? theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
+                : theme === 'dark' ? 'text-slate-200' : 'text-slate-700'
+              }
+              group-hover:${theme === 'dark' ? 'text-white' : 'text-slate-900'}
+            `}>
+              {task.activity}
+            </h3>
+            <div className="flex gap-2 items-center opacity-80 group-hover:opacity-100 transition-opacity">
                   {!showTomorrow && !showFullSchedule ? (
                     <div className="flex gap-2">
                       {/* Priority Toggle */}
@@ -1532,7 +1554,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                 </button>):''}
               </div>
             </div>
-            {task.description && (
+            {/* {task.description && (
               <p className={`
                 mt-1 text-sm opacity-75 line-clamp-2 overflow-hidden
                 ${task.completed ? 'line-through opacity-50' : ''}
@@ -1540,7 +1562,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
               `}>
                 {task.description}
               </p>
-            )}
+            )} */}
           </div>
         </motion.div>
       )
@@ -1575,17 +1597,17 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
           }}
         >
           <div className={`
-          absolute left-0 top-5 px-3 py-1 rounded-tl-xl rounded-br-xl text-xs font-medium
+          absolute left-0 top-1/2 -translate-y-1/2 px-3 py-1 rounded-tl-xl rounded-br-xl text-xs font-medium
           ${theme === 'dark' 
-            ? ' text-slate-400' 
-            : ' text-slate-600'
+            ? 'text-slate-400' 
+            : 'text-slate-600'
           }
         `}>
-          <div className="flex flex-col items-center ">
-         <div>{formatTime(suggestedTask.startTime)} </div>  
-         <div> | </div>
-         <div> {formatTime(suggestedTask.startTime + suggestedTask.duration)} </div>
-         </div>
+          <div className="flex flex-col items-center">
+            <div>{formatTime(suggestedTask.startTime)}</div>
+            <div>|</div>
+            <div>{formatTime(suggestedTask.startTime + suggestedTask.duration)}</div>
+          </div>
         </div>
           <div className="pl-12 sm:pl-20 pr-12 py-2 sm:py-3 min-h-full flex flex-col relative">
             <div className="flex items-center justify-between">
@@ -1669,7 +1691,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             <span className={`text-xs font-medium
               ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}
             `}>
-              Now
+              {/* Now */}
             </span>
           </div>
         )}
@@ -1762,60 +1784,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                     translate-x-0 sm:translate-x-0
                     ${window.innerWidth < 640 ? '-translate-x-[calc(100%-44px)]' : ''}
                   `}>
-                    {/* Analytics Link - Only show for premium users */}
-                    {isPremiumUser && (
-                      <Link
-                        href="/analytics"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          setIsNavigating(true)
-                          router.push('/analytics')
-                        }}
-                        className={`
-                          p-2 rounded-lg transition-colors flex items-center gap-2
-                          ${!isPremiumUser 
-                            ? theme === 'dark'
-                              ? 'bg-slate-700/50 text-slate-400 cursor-not-allowed'
-                              : 'bg-slate-100/50 text-slate-500 cursor-not-allowed'
-                            : theme === 'dark'
-                              ? 'bg-violet-500/20 text-violet-400 hover:bg-violet-500/30'
-                              : 'bg-violet-50 text-violet-600 hover:bg-violet-100'
-                          }
-                        `}
-                      >
-                        {isNavigating ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            <span className="hidden sm:inline">Loading...</span>
-                          </div>
-                        ) : (
-                          <>
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path 
-                                strokeLinecap="round" 
-                                strokeLinejoin="round" 
-                                strokeWidth={2} 
-                                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                              />
-                            </svg>
-                            <span className="hidden sm:inline">
-                              {isPremiumUser ? 'View Analytics' : 'Analytics'}
-                            </span>
-                            {!isPremiumUser && (
-                              <span className={`
-                                ml-1 px-1.5 py-0.5 text-xs rounded-full
-                                ${theme === 'dark' 
-                                  ? 'bg-violet-500/20 text-violet-400' 
-                                  : 'bg-violet-100 text-violet-600'
-                                }
-                              `}>
-                                PRO
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </Link>
-                    )}
+                   
 
                     {/* Premium/Account link - Updated styling */}
                     <Link
@@ -2088,7 +2057,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                             />
                           </svg>
                           <span className="hidden sm:inline">
-                            {isPremiumUser ? 'View Analytics' : 'Analytics'}
+                            Progress
                           </span>
                           {!isPremiumUser && (
                             <span className={`
