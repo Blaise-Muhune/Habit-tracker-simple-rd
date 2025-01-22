@@ -3,6 +3,8 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { auth, googleProvider } from '@/lib/firebase'
 import { signInWithPopup, signOut, onAuthStateChanged, User, createUserWithEmailAndPassword, signInWithEmailAndPassword, UserCredential } from 'firebase/auth'
+import { doc, setDoc } from 'firebase/firestore'
+import { db } from '@/lib/firebase'
 
 export interface AuthContextType {
   user: User | null;
@@ -29,9 +31,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      await signInWithPopup(auth, googleProvider)
+      const result = await signInWithPopup(auth, googleProvider);
+      
+      // Create user document if it doesn't exist
+      await setDoc(doc(db, 'users', result.user.uid), {
+        email: result.user.email,
+        userId: result.user.uid,
+        createdAt: new Date().toISOString(),
+      }, { merge: true }); // merge: true prevents overwriting if document exists
+      
     } catch (error) {
       console.error('Error signing in with Google:', error)
+      throw error;
     }
   }
 
@@ -53,7 +64,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUpWithEmail = async (email: string, password: string) => {
     try {
-      return await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Create user document in Firestore
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+        email: userCredential.user.email,
+        userId: userCredential.user.uid,
+        createdAt: new Date().toISOString(),
+      });
+
+      return userCredential;
     } catch (error: unknown) {
       throw new Error(error instanceof Error ? error.message : 'An unknown error occurred');
     }

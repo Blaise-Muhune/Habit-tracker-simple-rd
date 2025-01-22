@@ -61,7 +61,7 @@ async function sendEmailNotification(task: Task, email: string, reminderTime: nu
                     margin: 0;
                     font-size: 24px;
                     font-weight: bold;
-                  ">⏰ Task Reminder</h1>
+                  ">Task Reminder</h1>
                 </div>
 
                 <!-- Main Content -->
@@ -90,7 +90,7 @@ async function sendEmailNotification(task: Task, email: string, reminderTime: nu
                       margin: 0;
                       font-size: 16px;
                     ">
-                      🕒 Starting in <strong>${reminderTime} minutes</strong>
+                       Starting in <strong>${reminderTime} minutes</strong>
                     </p>
                     ${task.description ? `
                       <p style="
@@ -98,7 +98,7 @@ async function sendEmailNotification(task: Task, email: string, reminderTime: nu
                         margin: 16px 0 0 0;
                         font-size: 16px;
                       ">
-                        📝 <strong>Details:</strong> ${task.description}
+                        <strong>Details:</strong> ${task.description}
                       </p>
                     ` : ''}
                   </div>

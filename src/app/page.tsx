@@ -20,23 +20,15 @@ import {
   limit
 } from 'firebase/firestore'
 import { useAuth } from '@/context/AuthContext'
-import { User } from 'firebase/auth'
+// import { User } from 'firebase/auth'
 import Link from 'next/link'
-import { Task, UserPreferences, SuggestedTask } from '@/types'
+import { Task, UserPreferences, TaskSuggestion } from '@/types'
 import { Toast } from '@/components/Toast'
-import AITaskSuggestions from '../components/AITaskSuggestions'
 import { Tour } from '@/components/Tour'
 import { useRouter } from 'next/navigation'
 
-
-const truncateText = (text: string, maxLength: number = 50) => {
-  if (!text) return '';
-  const firstLine = text.split('\n')[0];
-  if (firstLine.length <= maxLength) return firstLine;
-  return firstLine.substring(0, maxLength) + '...';
-};
-
-
+// Add this constant near the top of the file
+const DESCRIPTION_MAX_LENGTH = 280; // About 2 tweets worth of characters
 
 const formatDate = (date: Date) => format(date, 'yyyy-MM-dd')
 const today = format(new Date(),"EEEE")
@@ -72,7 +64,6 @@ const TaskDetailPopup = ({
   isEditMode,
   onModify,
   onPriorityToggle,
-  onDelete
 }: {
   task: Task
   onClose: () => void
@@ -245,7 +236,7 @@ const TaskDetailPopup = ({
                 </svg>
                 <span className="hidden sm:inline">Priority</span>
               </button>
-              <button
+              {/* <button
                 onClick={(e) => {
                   e.stopPropagation()
                   onClose() // Close the modal first
@@ -265,7 +256,7 @@ const TaskDetailPopup = ({
                   />
                 </svg>
                 <span className="hidden sm:inline">Delete</span>
-              </button>
+              </button> */}
             </div>
 
             {/* Right side - Modify and Close buttons */}
@@ -356,10 +347,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   const [suggestedTasks, setSuggestedTasks] = useState<Task[]>([])
 
   // Add new state to track accepted suggestions
-  const [acceptedSuggestions, setAcceptedSuggestions] = useState<string[]>([])
 
-  // Add state to track saved suggestion IDs
-  const [savedSuggestionIds, setSavedSuggestionIds] = useState<Record<string, string>>({})
 
   const router = useRouter()
 
@@ -384,7 +372,24 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       }
     }
   }, [isStartTimePickerOpen, editingTask?.startTime])
-
+  
+  useEffect(() => {
+    if (!showTomorrow) {
+      const scrollToCurrentTime = () => {
+        const currentHourElement = document.getElementById(`hour-${currentHour}`);
+        if (currentHourElement) {
+          currentHourElement.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center'
+          });
+        }
+      };
+      
+      // Small delay to ensure elements are rendered
+      const timeoutId = setTimeout(scrollToCurrentTime, 100);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [showTomorrow, currentHour, showFullSchedule]);
   useEffect(() => {
     if (!showTomorrow && !isLoading) {
       const currentHourElement = document.getElementById(`hour-${currentHour}`)
@@ -449,44 +454,60 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     setTomorrowTimeBlockView('hour')
   }
 
+  // Modify fetchPreviousDayTasks to use stored suggestions
   const fetchPreviousDayTasks = useCallback(async () => {
-    if (!user) return
+    if (!user) {
+      console.log('No user found, skipping fetch')
+      return
+    }
 
     try {
-      // Always fetch for tomorrow's day, regardless of current view
       const targetDay = format(addDays(new Date(), 1), 'EEEE').toLowerCase()
-      const targetDate = tomorrowDate
-
-      // Rest of the fetch logic remains the same
-      const fourWeeksAgo = subDays(new Date(), 28)
-      const tasksQuery = query(
-        collection(db, 'tasks'),
+      console.log('Fetching suggestions for day:', targetDay)
+      
+      const suggestionsQuery = query(
+        collection(db, 'taskSuggestions'),
         where('userId', '==', user.uid),
         where('day', '==', targetDay),
-        where('createdAt', '>=', fourWeeksAgo.getTime()),
-        orderBy('createdAt', 'desc')
+        where('processed', '==', false),
+        orderBy('confidence', 'desc')
       )
 
-      const snapshot = await getDocs(tasksQuery)
-      const previousTasks = snapshot.docs
-        .map(doc => ({ ...doc.data(), id: doc.id } as Task))
-        .filter(task => task.date !== targetDate)
-
-      // Prepare suggestions for tomorrow
-      const suggestions = previousTasks.map(task => ({
-        ...task,
-        id: undefined,
-        date: targetDate,
-        completed: false,
-        suggested: true,
-        day: targetDay,
+      console.log('Query params:', {
         userId: user.uid,
-        createdAt: Date.now()
-      }))
+        day: targetDay,
+        processed: false
+      })
 
-      setSuggestedTasks(suggestions)
+      const snapshot = await getDocs(suggestionsQuery)
+      console.log('Raw Firestore response:', snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+
+      const suggestions = snapshot.docs.map(doc => ({
+        ...(doc.data() as Omit<TaskSuggestion, 'id'>),
+        id: doc.id
+      })) as TaskSuggestion[]
+      
+      console.log('Parsed suggestions:', suggestions)
+
+      const suggestedTasks = suggestions.map(suggestion => ({
+        activity: suggestion.activity,
+        startTime: suggestion.startTime,
+        duration: suggestion.duration,
+        description: suggestion.description,
+        date: tomorrowDate,
+        userId: user.uid,
+        day: targetDay,
+        suggested: true,
+        isPriority: false,
+        completed: false,
+        createdAt: Date.now()
+      })) as Task[]
+
+      console.log('Converted to tasks:', suggestedTasks)
+
+      setSuggestedTasks(suggestedTasks)
     } catch (error) {
-      console.error('Error fetching previous day tasks:', error)
+      console.error('Error fetching suggestions:', error)
       showToast('Failed to load task suggestions', 'error')
     }
   }, [user, tomorrowDate])
@@ -669,12 +690,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     router.push('/signin')
   }
 
-  
-
-  const getNextTask = (currentHour: number) => {
-    return getCurrentTasks()
-      .find(task => task.startTime > currentHour);
-  };
 
   const loadTasks = async () => {
     if (!user) {
@@ -908,7 +923,6 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     return timeSlot >= start && timeSlot <= end
   }
 
-  const canModifyTasks = () => showTomorrow || showFullSchedule
 
   const handleHourClick = (timeSlot: number) => {
     if (!user) {
@@ -960,6 +974,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       setShowTaskModal(true)
     }
   }
+
 
   const createTask = async () => {
     if (!selectionStart || !selectionEnd || !user) return
@@ -1053,7 +1068,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
   const handleTaskClick = (task: Task) => {
     setSelectedTask(task)
-    if (showFullSchedule) {
+    if (showTomorrow || showFullSchedule) {
       setShowTaskModal(true)
       setShowDetailPopup(false)
       setEditingTask(task)
@@ -1157,7 +1172,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     console.log('Detected timezone:', timezone);
 
     const idtoken = await auth.currentUser?.getIdToken();
-    const response = await fetch('/api/weekly-analytics-email', {
+    const response = await fetch('/api/weekly-task-analysis', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${idtoken}`,
@@ -1195,24 +1210,20 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   // }
 
   // Add the tomorrow view filter component
-  const TomorrowViewFilter = () => (
+  const ViewFilter = ({ timeBlockView, setTimeBlockView }: { timeBlockView: "hour" | "halfHour", setTimeBlockView: (timeBlockView: "hour" | "halfHour") => void }) => (
     <div className={`
       sticky top-0 z-50 -mx-8 px-8 py-4
-      backdrop-blur-lg
-      ${theme === 'dark'
-        ? 'bg-[#0B1120]/80'
-        : 'bg-[#F0F4FF]/80'
-      }
+      
     `}>
       <span className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-        View:
+        {/* View: */}
       </span>
       <div className="flex gap-1">
         <button
-          onClick={() => setTomorrowTimeBlockView('hour')}
+          onClick={() => setTimeBlockView('hour')}
           className={`
             px-3 py-1 rounded text-sm font-medium transition-colors
-            ${tomorrowTimeBlockView === 'hour'
+            ${timeBlockView === 'hour'
               ? theme === 'dark'
                 ? 'bg-blue-500/20 text-blue-400'
                 : 'bg-blue-100 text-blue-600'
@@ -1225,10 +1236,10 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
           1 Hour
         </button>
         <button
-          onClick={() => setTomorrowTimeBlockView('halfHour')}
+          onClick={() => setTimeBlockView('halfHour')}
           className={`
             px-3 py-1 rounded text-sm font-medium transition-colors
-            ${tomorrowTimeBlockView === 'halfHour'
+            ${timeBlockView === 'halfHour'
               ? theme === 'dark'
                 ? 'bg-blue-500/20 text-blue-400'
                 : 'bg-blue-100 text-blue-600'
@@ -1307,14 +1318,17 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         }
       `}>
         <span className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-          Show Previous {format(addDays(new Date(), 1), 'EEEE')} Tasks
+          AI Suggs
         </span>
         <button
+          disabled={!isPremiumUser}
           onClick={() => setShowPreviousDaySuggestions(!showPreviousDaySuggestions)}
           className={`
-            relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full 
+            relative inline-flex h-6 w-11 flex-shrink-0 rounded-full 
             transition-colors duration-200 ease-in-out
-            ${showPreviousDaySuggestions
+            ${isPremiumUser ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}
+            
+            ${showPreviousDaySuggestions 
               ? theme === 'dark' ? 'bg-blue-500' : 'bg-blue-600'
               : theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'
             }
@@ -1326,89 +1340,187 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             ${showPreviousDaySuggestions ? 'translate-x-5' : 'translate-x-0'}
           `} />
         </button>
+        {!isPremiumUser && (
+                              <span 
+                              onClick={() => {
+                                router.push('/premium')
+                              }}
+                              className={`
+                                ml-1 px-1.5 py-0.5 text-xs rounded-full cursor-pointer
+                                ${theme === 'dark' 
+                                  ? 'bg-violet-500/20 text-violet-400' 
+                                  : 'bg-violet-100 text-violet-600'
+                                }
+                              `}>
+                                PRO
+                              </span>
+                            )}
       </div>
   )
   // Modify your task rendering to include suggested tasks
+
+  const isCurrentTimeInTask = (task: Task) => {
+    const now = new Date();
+    const currentTimeInHours = now.getHours() + (now.getMinutes() / 60);
+    return currentTimeInHours >= task.startTime && 
+           currentTimeInHours < (task.startTime + task.duration);
+  };
+  
+
   const renderTimeSlot = (timeSlot: number) => {
     const isPastTimeSlot = !showTomorrow && timeSlot < currentHour;
-    const task = getTaskAtHour(timeSlot)
+    const task = getTaskAtHour(timeSlot);
+    const currentTimeInHours = new Date().getHours() + (new Date().getMinutes() / 60);
+    
+    // Update isCurrentTime logic to handle both hour and half-hour views
+    const isCurrentTime = (() => {
+      const currentView = showTomorrow ? tomorrowTimeBlockView : timeBlockView;
+      if (currentView === 'hour') {
+        // For hour view, show indicator if current time is within the hour
+        const timeSlotHour = Math.floor(timeSlot);
+        return timeSlotHour === Math.floor(currentTimeInHours);
+      } else {
+        // For half-hour view, show indicator if current time is within the 30-min slot
+        return timeSlot <= currentTimeInHours && currentTimeInHours < (timeSlot + 0.5);
+      }
+    })();
+
     const suggestedTask = showPreviousDaySuggestions && 
       suggestedTasks.find(t => t.startTime === timeSlot && !getCurrentTasks().some(ct => 
         ct.startTime === t.startTime && ct.activity === t.activity
-      ))
+      ));
 
-    if (isHourPartOfTask(timeSlot)) return null
+    if (isHourPartOfTask(timeSlot)) return null;
 
     // If there's a real task, render it normally
     if (task) {
+      const isActiveTask = isCurrentTime && isCurrentTimeInTask(task);
       return (
         <motion.div 
-          key={timeSlot}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          onClick={(e) => {
-            if (!(e.target as HTMLElement).closest('button')) {
-              handleTaskClick(task);
-            }
-          }}
-          className={`
-            group relative rounded-xl border-2 backdrop-blur-sm
-            transition-all duration-300 hover:scale-[1.02] cursor-pointer
-            ${task.completed ? 'opacity-50' : isPastTimeSlot ? 'opacity-50' : ''}
-            ${task.isPriority
-              ? theme === 'dark'
-                ? 'border-blue-500/50 bg-blue-950/50'
-                : 'border-blue-200 bg-blue-50/50'
-              : theme === 'dark'
-                ? 'border-slate-700 bg-slate-800/50'
-                : 'border-slate-200 bg-white/50'
-            }
-          `}
-          style={{ 
-            minHeight: `${task.duration * 3.5}rem`,
-            height: 'auto'
-          }}
-        >
-          <div className="pl-12 sm:pl-20 pr-12 py-2 sm:py-3 min-h-full flex flex-col relative">
+        key={timeSlot}
+        id={`hour-${Math.floor(timeSlot)}`}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        onClick={(e) => {
+          if (!(e.target as HTMLElement).closest('button')) {
+            handleTaskClick(task);
+          }
+        }}
+        className={`
+          group relative rounded-xl border-2 backdrop-blur-sm
+          transition-all duration-300 hover:scale-[1.02] cursor-pointer
+          ${task.completed ? 'opacity-20' : isPastTimeSlot ? 'opacity-50' : ''}
+          ${isActiveTask ? 'ring-2 ring-offset-2 ring-red-500 shadow-lg' : ''}
+          ${task.isPriority
+            ? theme === 'dark'
+              ? 'border-blue-500/50 bg-blue-950/50'
+              : 'border-blue-200 bg-blue-50/50'
+            : theme === 'dark'
+              ? 'border-slate-700 bg-slate-800/50'
+              : 'border-slate-200 bg-white/50'
+          }
+          ${task.completed 
+          ? theme === 'dark'
+          ? 'border-sky-500/50 bg-sky-950/50'
+          : 'border-sky-200 bg-sky-50/50'
+        : ''}
+        `}
+        style={{ 
+          minHeight: `${task.duration * 3.5}rem`,
+          height: 'auto'
+        }}
+      >
+        <div className={`
+          absolute left-0 top-0 px-3 py-1 rounded-tl-xl rounded-br-xl text-xs font-medium
+          ${theme === 'dark' 
+            ? ' text-slate-400' 
+            : ' text-slate-600'
+          }
+        `}>
+          <div className="flex flex-col items-center ">
+         <div>{formatTime(task.startTime)} </div>  
+         <div> | </div>
+         <div> {formatTime(task.startTime + task.duration)} </div>
+         </div>
+        </div>
+         {/* Add Now indicator for active tasks */}
+      {isActiveTask && (
+        <div className={`
+          absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1
+          flex items-center gap-2 px-3 py-1 rounded-r-full
+          ${theme === 'dark' ? 'bg-blue-500/20' : 'bg-blue-50'}
+          z-10
+        `}>
+          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          <span className={`text-xs font-medium
+            ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}
+          `}>
+            Now
+          </span>
+        </div>
+      )}
+          <div className="pl-12 sm:pl-20 pr-1 py-2 sm:py-3 min-h-full flex flex-col relative">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium">{task.activity}</h3>
-              <div className="flex gap-2">
-                <button
+              <h3 className="text-lg font-medium px-1">{task.activity}</h3>
+              <div className="flex gap-2 items-center">
+                  {!showTomorrow && !showFullSchedule ? (
+                    <div className="flex gap-2">
+                      {/* Priority Toggle */}
+                  <button
                   onClick={() => handleTaskComplete(task)}
-                  className={`p-1 rounded-lg transition-colors
+                  className={`p-2 rounded-lg transition-colors
                     ${theme === 'dark'
-                      ? 'hover:bg-green-500/20 text-green-400'
-                      : 'hover:bg-green-100 text-green-600'
+                      ? task.completed ? 'text-sky-400 ' : 'text-gray-400'
+                      : task.completed ? 'text-sky-400 ' : 'text-gray-600'
                     }
-                    ${task.completed ? 'opacity-100' : 'opacity-50 hover:opacity-100'}
+                    ${task.completed ? 'opacity-100' : 'opacity-70 hover:opacity-100'}
                   `}
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                  title={task.completed ? "Mark as undone" : "Mark as done"}
+                > 
+                {task.completed ? (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                />
+              </svg>
+              ):(
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m0 7l-5 5m0-5l5 5"
+                />
+               </svg>)}
+                  
                 </button>
+               </div>
+             ):''}
                 <button
-                  onClick={() => handlePriorityToggle(task)}
-                  className={`p-1 rounded-lg transition-colors
-                    ${theme === 'dark'
-                      ? 'hover:bg-blue-500/20 text-blue-400'
-                      : 'hover:bg-blue-100 text-blue-600'
-                    }
-                    ${task.isPriority ? 'opacity-100' : 'opacity-50 hover:opacity-100'}
+                onClick={() => handlePriorityToggle(task)}
+                className={`p-1 rounded-lg transition-colors
+                  ${theme === 'dark'
+                  ? ' text-blue-400'
+                  : ' text-blue-600'
+                  }
+                  ${task.isPriority ? 'opacity-100' : 'opacity-70 hover:opacity-100'}
                   `}
-                >
+                  >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                           d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-                        />
+                          />
                       </svg>
                 </button>
-                <button
+                { showFullSchedule || showTomorrow ? (<button
                   onClick={() => handleTaskDelete(task)}
                   className={`p-1 rounded-lg transition-colors
                     ${theme === 'dark'
-                      ? 'bg-red-500/20 text-red-400'
-                      : 'hover:bg-red-100 text-red-600'
+                      ? ' text-red-400'
+                      : ' text-red-600'
                     }
                     opacity-50 hover:!opacity-100
                   `}
@@ -1416,11 +1528,17 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
-                </button>
+                </button>):''}
               </div>
             </div>
             {task.description && (
-              <p className="mt-1 text-sm opacity-75">{task.description}</p>
+              <p className={`
+                mt-1 text-sm opacity-75 line-clamp-2 overflow-hidden
+                ${task.completed ? 'line-through opacity-50' : ''}
+                ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
+              `}>
+                {task.description}
+              </p>
             )}
           </div>
         </motion.div>
@@ -1455,11 +1573,24 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             height: 'auto'
           }}
         >
+          <div className={`
+          absolute left-0 top-5 px-3 py-1 rounded-tl-xl rounded-br-xl text-xs font-medium
+          ${theme === 'dark' 
+            ? ' text-slate-400' 
+            : ' text-slate-600'
+          }
+        `}>
+          <div className="flex flex-col items-center ">
+         <div>{formatTime(suggestedTask.startTime)} </div>  
+         <div> | </div>
+         <div> {formatTime(suggestedTask.startTime + suggestedTask.duration)} </div>
+         </div>
+        </div>
           <div className="pl-12 sm:pl-20 pr-12 py-2 sm:py-3 min-h-full flex flex-col relative">
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-sm opacity-75">
-                  Suggested from previous {format(new Date(suggestedTask.date), 'EEEE')}
+                <span className={`text-sm opacity-75 ${theme === 'dark' ? 'text-slate-400 bg-slate-800/50 px-2 py-1 rounded-lg' : 'text-slate-600 bg-slate-100/50 px-2 py-1 rounded-lg'}`}>
+                  Suggested Task
                 </span>
                 <h3 className="text-lg font-medium mt-1">{suggestedTask.activity}</h3>
               </div>
@@ -1507,25 +1638,40 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
     // Otherwise render empty time slot
     return (
-  <div
-    key={timeSlot}
-    onClick={() => handleHourClick(timeSlot)}
-    className={`
-      relative rounded-xl border-2 border-dashed transition-colors cursor-pointer
-      ${isHourSelected(timeSlot)
-        ? theme === 'dark'
-          ? 'border-blue-500/50 bg-blue-950/50'
-          : 'border-blue-200 bg-blue-50/50'
-        : theme === 'dark'
-          ? 'border-slate-700/50 hover:border-slate-600'
-          : 'border-slate-200/50 hover:border-slate-300'
-      }
-    `}
+      <div
+      key={timeSlot}
+      id={`hour-${Math.floor(timeSlot)}`}
+      onClick={() => handleHourClick(timeSlot)}
+      className={`
+        relative rounded-xl border-2 border-dashed transition-colors cursor-pointer
+        ${isHourSelected(timeSlot)
+          ? theme === 'dark'
+            ? 'border-blue-500/50 bg-blue-950/50'
+            : 'border-blue-200 bg-blue-50/50'
+          : theme === 'dark'
+            ? 'border-slate-700/50 hover:border-slate-600'
+            : 'border-slate-300/50 hover:border-slate-300'
+        }
+      `}
   >
     <div className="pl-12 sm:pl-20 pr-4 py-2 sm:py-3">
       <span className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
         {formatTime(timeSlot)}
       </span>
+      {/* Current time indicator - Updated condition */}
+      {!showTomorrow && isCurrentTime && (
+          <div className={`
+            absolute left-0 top-1/2 -translate-y-1/2
+            flex items-center gap-1 px-1 py-1 rounded-r-full
+          `}>
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span className={`text-xs font-medium
+              ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}
+            `}>
+              Now
+            </span>
+          </div>
+        )}
     </div>
   </div>
 )
@@ -2082,7 +2228,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
           </div>
 
           {showTomorrow && (
-            <TomorrowViewFilter />
+            <ViewFilter timeBlockView={tomorrowTimeBlockView} setTimeBlockView={setTomorrowTimeBlockView} />
           )}
 
 
@@ -2166,13 +2312,13 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                   : 'bg-[#F0F4FF]/80'
                 }
               `}>
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-4">
+                <div className="flex flex-row justify-between items-center">
+                  <div className=" flex-col flex items-s gap-4">
                     <div 
                       onClick={() => setShowFullSchedule(false)}
                       className={`
                         inline-flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer
-                        transition-colors duration-200
+                        transition-colors duration-200 w-fit
                         ${theme === 'dark'
                           ? 'bg-violet-500/20 border border-violet-500/10 hover:bg-violet-500/30'
                           : 'bg-violet-50 border border-violet-100 hover:bg-violet-100'
@@ -2183,7 +2329,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                         text-sm font-medium
                         ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}
                       `}>
-                        Edit Mode Active
+                        Edit
                       </span>
                       <div className={`w-2 h-2 rounded-full animate-pulse
                         ${theme === 'dark' ? 'bg-violet-400' : 'bg-violet-500'}
@@ -2199,53 +2345,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                     </div>
 
                     {/* Time Block View Filter */}
-                    <div className={`
-                      flex items-center gap-2 px-3 py-2 rounded-lg
-                      ${theme === 'dark'
-                        ? 'bg-slate-800/50 border border-slate-700'
-                        : 'bg-white/50 border border-slate-200'
-                      }
-                    `}>
-                      <span className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                        View:
-                      </span>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => setTimeBlockView('hour')}
-                          className={`
-                            px-3 py-1 rounded text-sm font-medium transition-colors
-                            ${timeBlockView === 'hour'
-                              ? theme === 'dark'
-                                ? 'bg-blue-500/20 text-blue-400'
-                                : 'bg-blue-100 text-blue-600'
-                              : theme === 'dark'
-                                ? 'text-slate-400 hover:text-slate-300'
-                                : 'text-slate-600 hover:text-slate-800'
-                            }
-                          `}
-                        >
-                          1 Hour
-                        </button>
-                        <button
-                          onClick={() => setTimeBlockView('halfHour')}
-                          className={`
-                            px-3 py-1 rounded text-sm font-medium transition-colors
-                            ${timeBlockView === 'halfHour'
-                              ? theme === 'dark'
-                                ? 'bg-blue-500/20 text-blue-400'
-                                : 'bg-blue-100 text-blue-600'
-                              : theme === 'dark'
-                                ? 'text-slate-400 hover:text-slate-300'
-                                : 'text-slate-600 hover:text-slate-800'
-                            }
-                          `}
-                        >
-                          30 Min
-                        </button>
-                      </div>
-                  <SuggestionsToggle />
-
-                    </div>
+                    <ViewFilter timeBlockView={timeBlockView} setTimeBlockView={setTimeBlockView} />
+                  {/* <SuggestionsToggle /> */}
                   </div>
                 </div>
               </div>
@@ -2273,25 +2374,66 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
               }
             `}
           >
-            {/* Modal Header */}
-            <div className={`px-6 py-4 border-b
+            {/* Modal Header with integrated actions */}
+            <div className={`px-6 py-4 border-b flex items-center justify-between
               ${theme === 'dark' ? 'border-slate-800' : 'border-slate-200'}
             `}>
-              <div className="flex items-center justify-between">
-                <h2 className={`text-lg font-semibold
-                  ${theme === 'dark' ? 'text-white' : 'text-slate-900'}
-                `}>
-                  {editingTask.id ? 'Edit Task' : 'New Task'}
-                </h2>
+              <h2 className={`text-lg font-semibold
+                ${theme === 'dark' ? 'text-white' : 'text-slate-900'}
+              `}>
+                {editingTask.id ? 'Edit Task' : 'New Task'}
+              </h2>
+              
+              <div className="flex items-center gap-2">
+                {/* Save Button */}
+                <button
+                  onClick={() => {
+                    saveTask(editingTask)
+                    setIsStartTimePickerOpen(false)
+                    setIsEndTimePickerOpen(false)
+                  }}
+                  disabled={
+                    editingTask.duration <= 0 || 
+                    hasTimeConflict(
+                      editingTask.startTime,
+                      editingTask.startTime + editingTask.duration,
+                      editingTask.id
+                    ) ||
+                    !editingTask.activity.trim()
+                  }
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors
+                    ${editingTask.duration <= 0 || 
+                      hasTimeConflict(
+                        editingTask.startTime,
+                        editingTask.startTime + editingTask.duration,
+                        editingTask.id
+                      ) ||
+                      !editingTask.activity.trim()
+                      ? theme === 'dark'
+                        ? 'bg-blue-500/50 text-blue-300 cursor-not-allowed'
+                        : 'bg-blue-300 text-white cursor-not-allowed'
+                      : theme === 'dark'
+                        ? 'bg-blue-500 text-white hover:bg-blue-400'
+                        : 'bg-blue-600 text-white hover:bg-blue-500'
+                  }
+                `}
+              >
+                Save
+              </button>
+
+                {/* Close Button */}
                 <button
                   onClick={() => {
                     setShowTaskModal(false)
                     setEditingTask(null)
-                    setIsStartTimePickerOpen(false)  // Close time pickers
+                    setIsStartTimePickerOpen(false)
                     setIsEndTimePickerOpen(false)
                   }}
-                  className={`p-2 rounded-lg hover:bg-slate-800/50 transition-colors
-                    ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}
+                  className={`p-2 rounded-lg transition-colors
+                    ${theme === 'dark'
+                      ? 'text-slate-400 hover:bg-slate-800'
+                      : 'text-slate-600 hover:bg-slate-100'
+                    }
                   `}
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2506,82 +2648,44 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                 />
               </div>
 
-              <div>
-                <label className={`block mb-2 text-sm font-medium
-                  ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}
-                >
-                  Description
-                </label>
-                <textarea
-                  value={editingTask?.description || ''}
-                  onChange={(e) => setEditingTask(prev => 
-                    prev ? { ...prev, description: e.target.value } : null
-                  )}
-                  rows={4}
-                  className={`w-full px-4 py-3 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-blue-500
-                    ${theme === 'dark' 
-                      ? 'bg-slate-800 border-slate-700' 
-                      : 'bg-slate-50 border-slate-200'
-                    }
-                  `}
-                  placeholder="Add any additional details or notes..."
-                />
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowTaskModal(false)
-                  setEditingTask(null)
-                  setIsStartTimePickerOpen(false)  // Close time pickers
-                  setIsEndTimePickerOpen(false)
-                }}
-                className={`px-4 py-2 rounded-lg text-sm font-medium
-                  ${theme === 'dark'
-                    ? 'text-slate-400 hover:bg-slate-800'
-                    : 'text-slate-600 hover:bg-slate-100'
-                  }
-                `}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  saveTask(editingTask)
-                  setIsStartTimePickerOpen(false)  // Close time pickers
-                  setIsEndTimePickerOpen(false)
-                }}
-                disabled={
-                  editingTask.duration <= 0 || 
-                  hasTimeConflict(
-                    editingTask.startTime,
-                    editingTask.startTime + editingTask.duration,
-                    editingTask.id
-                  ) ||
-                  !editingTask.activity.trim()
+              <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label className={`block text-sm font-medium
+                ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}
+              `}>
+                Description (optional)
+              </label>
+              <span className={`text-xs
+                ${editingTask.description.length >= DESCRIPTION_MAX_LENGTH
+                  ? 'text-red-500'
+                  : theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                 }
-                className={`px-4 py-2 rounded-lg text-sm font-medium
-                  ${editingTask.duration <= 0 || 
-                    hasTimeConflict(
-                      editingTask.startTime,
-                      editingTask.startTime + editingTask.duration,
-                      editingTask.id
-                    ) ||
-                    !editingTask.activity.trim()
-                    ? theme === 'dark'
-                      ? 'bg-blue-500/50 text-blue-300 cursor-not-allowed'
-                      : 'bg-blue-300 text-white cursor-not-allowed'
-                    : theme === 'dark'
-                      ? 'bg-blue-500 text-white hover:bg-blue-400'
-                      : 'bg-blue-600 text-white hover:bg-blue-500'
-                  }
-                `}
-              >
-                Save
-              </button>
+              `}>
+                {editingTask.description.length}/{DESCRIPTION_MAX_LENGTH}
+              </span>
             </div>
+            <textarea
+              value={editingTask.description}
+              onChange={(e) => {
+                if (e.target.value.length <= DESCRIPTION_MAX_LENGTH) {
+                  setEditingTask(prev => prev ? {
+                    ...prev,
+                    description: e.target.value
+                  } : null)
+                }
+              }}
+              className={`w-full px-4 py-2 rounded-lg border resize-none
+                ${theme === 'dark'
+                  ? 'bg-slate-800 border-slate-700 text-white'
+                  : 'bg-white border-slate-200 text-slate-900'
+                }
+              `}
+              placeholder="Add details (optional)"
+              rows={3}
+            />
+          </div>
+            </div>
+            {/* </div> */}
           </motion.div>
         </div>
       )}

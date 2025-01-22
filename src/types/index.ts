@@ -85,3 +85,15 @@ export interface NotificationHistory {
   timestamp: number;
   error?: string;
 }
+
+export interface TaskSuggestion {
+  activity: string
+  startTime: number
+  duration: number
+  description?: string
+  confidence: number
+  userId: string
+  day: string
+  createdAt: number
+  processed: boolean
+}

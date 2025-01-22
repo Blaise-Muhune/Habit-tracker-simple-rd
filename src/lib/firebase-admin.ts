@@ -1,5 +1,6 @@
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
 if (!process.env.FIREBASE_ADMIN_PRIVATE_KEY || 
     !process.env.FIREBASE_ADMIN_CLIENT_EMAIL || 
@@ -17,4 +18,10 @@ const firebaseAdminConfig = {
 
 const apps = getApps();
 const firebaseAdmin = apps.length === 0 ? initializeApp(firebaseAdminConfig) : apps[0];
+
+export const initAdmin = () => {
+  const db = getFirestore(firebaseAdmin);
+  return { db };
+};
+
 export const adminAuth = getAuth(firebaseAdmin); 
