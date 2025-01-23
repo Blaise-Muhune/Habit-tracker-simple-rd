@@ -1856,7 +1856,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                     </Link>
 
                     {/* Sign out button - Updated styling */}
-                    <button
+                    {/* <button
                       onClick={handleNotificationCheck}
                       className={`w-full px-4 py-2 text-sm transition-colors text-left
                         ${theme === 'dark'
@@ -1875,7 +1875,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                         </svg>
                         Check Notifications
                       </div>
-                    </button>
+                    </button> */}
                     
 
                     <button

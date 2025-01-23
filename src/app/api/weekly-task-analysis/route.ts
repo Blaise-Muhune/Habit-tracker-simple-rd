@@ -88,7 +88,7 @@ export async function GET() {
 
           Only include suggestions with confidence > 0.6
           Limit to 5 most relevant suggestions
-          if user has little data or no data, suggest productive random tasks that are most likely to be completed and not time sensitive
+          if user has little data or no data, suggest productive 5 random tasks that are most likely to be completed and not time sensitive
         `
 
         console.log('🤖 Calling ChatGPT API...')
