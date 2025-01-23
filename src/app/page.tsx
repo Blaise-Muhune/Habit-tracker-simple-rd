@@ -1172,33 +1172,33 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   
 
   // Add this near your other click handlers
-  const handleNotificationCheck = async () => {
-    // Try multiple methods to get timezone
-    const timezone = 
-      Intl.DateTimeFormat().resolvedOptions().timeZone || 
-      Intl.DateTimeFormat().resolvedOptions().timeZone || 
-      new Date().getTimezoneOffset() !== 0 ? 
-        getTimezoneFromOffset(new Date().getTimezoneOffset()) : 
-        'UTC';
+  // const handleNotificationCheck = async () => {
+  //   // Try multiple methods to get timezone
+  //   const timezone = 
+  //     Intl.DateTimeFormat().resolvedOptions().timeZone || 
+  //     Intl.DateTimeFormat().resolvedOptions().timeZone || 
+  //     new Date().getTimezoneOffset() !== 0 ? 
+  //       getTimezoneFromOffset(new Date().getTimezoneOffset()) : 
+  //       'UTC';
 
-    console.log('Detected timezone:', timezone);
+  //   console.log('Detected timezone:', timezone);
 
-    const idtoken = await auth.currentUser?.getIdToken();
-    const response = await fetch('/api/weekly-task-analysis', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${idtoken}`,
-        'Content-Type': 'application/json'
-      },
+  //   const idtoken = await auth.currentUser?.getIdToken();
+  //   const response = await fetch('/api/weekly-task-analysis', {
+  //     method: 'GET',
+  //     headers: {
+  //       'Authorization': `Bearer ${idtoken}`,
+  //       'Content-Type': 'application/json'
+  //     },
 
-    });
-    // const response = await fetch('/api/notifications', {
-    //   method: 'GET',
-    // });
+  //   });
+  //   // const response = await fetch('/api/notifications', {
+  //   //   method: 'GET',
+  //   // });
 
-    const data = await response.json();
-    console.log('Notification check response:', data);
-  };
+  //   const data = await response.json();
+  //   console.log('Notification check response:', data);
+  // };
 
   // Helper function to get approximate timezone from offset
   function getTimezoneFromOffset(offset: number): string {
