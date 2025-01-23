@@ -4,7 +4,7 @@ import { format, addDays } from 'date-fns'
 import { motion } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { Sun, Moon } from 'lucide-react'
-import { auth, db } from '@/lib/firebase'
+import {  db } from '@/lib/firebase'
 import { 
   collection, 
   query, 
@@ -1201,10 +1201,10 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   // };
 
   // Helper function to get approximate timezone from offset
-  function getTimezoneFromOffset(offset: number): string {
-    const hours = Math.abs(Math.floor(offset / 60));
-    return `Etc/GMT${offset <= 0 ? '+' : '-'}${hours}`;
-  }
+  // function getTimezoneFromOffset(offset: number): string {
+  //   const hours = Math.abs(Math.floor(offset / 60));
+  //   return `Etc/GMT${offset <= 0 ? '+' : '-'}${hours}`;
+  // }
 
   // Add this helper function for time options
   // const generateTimeOptions = () => {
