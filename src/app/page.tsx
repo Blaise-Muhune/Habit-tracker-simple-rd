@@ -31,9 +31,9 @@ import { useRouter } from 'next/navigation'
 const DESCRIPTION_MAX_LENGTH = 280; // About 2 tweets worth of characters
 
 const formatDate = (date: Date) => format(date, 'yyyy-MM-dd')
-const today = format(new Date(),"EEEE")
+// const today = format(new Date(),"EEEE")
 const todayDate = format(new Date(),"yyyy-MM-dd")
-const tomorrow = format(addDays(new Date(), 1), "EEEE")
+// const tomorrow = format(addDays(new Date(), 1), "EEEE")
 const tomorrowDate = format(addDays(new Date(), 1), "yyyy-MM-dd")
 
 
