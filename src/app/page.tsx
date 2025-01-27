@@ -887,7 +887,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       const updatedTask = {
         ...task,
         ...updates,
-        date: showTomorrow ? tomorrow : today
+        date: showTomorrow ? tomorrowDate : todayDate,
       }
       await updateDoc(doc(db, 'tasks', task.id), updatedTask)
       setCurrentTasks(getCurrentTasks().map(t => 
@@ -1385,9 +1385,11 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     const task = getTaskAtHour(timeSlot);
     const currentTimeInHours = new Date().getHours() + (new Date().getMinutes() / 60);
     
-    // Update isCurrentTime logic to handle both hour and half-hour views
+    // Update isCurrentTime logic to only show in Today view
     const isCurrentTime = (() => {
-      const currentView = showTomorrow ? tomorrowTimeBlockView : timeBlockView;
+      if (showTomorrow) return false; // Never show current time indicator in Tomorrow view
+      
+      const currentView = timeBlockView;
       if (currentView === 'hour') {
         // For hour view, show indicator if current time is within the hour
         const timeSlotHour = Math.floor(timeSlot);
@@ -1407,7 +1409,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
     // If there's a real task, render it normally
     if (task) {
-      const isActiveTask = isCurrentTime && isCurrentTimeInTask(task);
+      const isActiveTask = !showTomorrow && isCurrentTime && isCurrentTimeInTask(task);
       return (
         <motion.div 
         key={timeSlot}
