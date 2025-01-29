@@ -4,7 +4,7 @@ import { format, addDays } from 'date-fns'
 import { motion } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import { Sun, Moon } from 'lucide-react'
-import {  db } from '@/lib/firebase'
+import {  auth, db } from '@/lib/firebase'
 import { 
   collection, 
   query, 
@@ -1172,39 +1172,39 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   
 
   // Add this near your other click handlers
-  // const handleNotificationCheck = async () => {
-  //   // Try multiple methods to get timezone
-  //   const timezone = 
-  //     Intl.DateTimeFormat().resolvedOptions().timeZone || 
-  //     Intl.DateTimeFormat().resolvedOptions().timeZone || 
-  //     new Date().getTimezoneOffset() !== 0 ? 
-  //       getTimezoneFromOffset(new Date().getTimezoneOffset()) : 
-  //       'UTC';
+  const handleNotificationCheck = async () => {
+    // Try multiple methods to get timezone
+    const timezone = 
+      Intl.DateTimeFormat().resolvedOptions().timeZone || 
+      Intl.DateTimeFormat().resolvedOptions().timeZone || 
+      new Date().getTimezoneOffset() !== 0 ? 
+        getTimezoneFromOffset(new Date().getTimezoneOffset()) : 
+        'UTC';
 
   //   console.log('Detected timezone:', timezone);
 
-  //   const idtoken = await auth.currentUser?.getIdToken();
-  //   const response = await fetch('/api/weekly-task-analysis', {
-  //     method: 'GET',
-  //     headers: {
-  //       'Authorization': `Bearer ${idtoken}`,
-  //       'Content-Type': 'application/json'
-  //     },
+    const idtoken = await auth.currentUser?.getIdToken();
+    const response = await fetch('/api/weekly-task-analysis', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${idtoken}`,
+        'Content-Type': 'application/json'
+      },
 
-  //   });
-  //   // const response = await fetch('/api/notifications', {
-  //   //   method: 'GET',
-  //   // });
+    });
+    // const response = await fetch('/api/notifications', {
+    //   method: 'GET',
+    // });
 
-  //   const data = await response.json();
-  //   console.log('Notification check response:', data);
-  // };
+    const data = await response.json();
+    console.log('Notification check response:', data);
+  };
 
   // Helper function to get approximate timezone from offset
-  // function getTimezoneFromOffset(offset: number): string {
-  //   const hours = Math.abs(Math.floor(offset / 60));
-  //   return `Etc/GMT${offset <= 0 ? '+' : '-'}${hours}`;
-  // }
+  function getTimezoneFromOffset(offset: number): string {
+    const hours = Math.abs(Math.floor(offset / 60));
+    return `Etc/GMT${offset <= 0 ? '+' : '-'}${hours}`;
+  }
 
   // Add this helper function for time options
   // const generateTimeOptions = () => {
@@ -1858,7 +1858,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                     </Link>
 
                     {/* Sign out button - Updated styling */}
-                    {/* <button
+                    <button
                       onClick={handleNotificationCheck}
                       className={`w-full px-4 py-2 text-sm transition-colors text-left
                         ${theme === 'dark'
@@ -1877,7 +1877,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
                         </svg>
                         Check Notifications
                       </div>
-                    </button> */}
+                    </button>
                     
 
                     <button
