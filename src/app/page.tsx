@@ -608,6 +608,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
     
   }, [user]);
+    // Add new state for conflict modal
+    const [showConflictModal, setShowConflictModal] = useState(false);
 
   useEffect(() => {
     if (!user) return
@@ -774,10 +776,15 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     // Get all tasks' start times
     const taskStartTimes = getCurrentTasks().map(task => task.startTime);
     
+    // Get suggested task start times
+    const suggestedStartTimes = showPreviousDaySuggestions ? 
+      suggestedTasks.map(task => Math.floor(task.startTime * 2) / 2) : [];
+    
     // Filter time slots based on view type and tasks
     return timeSlots.filter(timeSlot => {
-      // Always show slots where tasks start
+      // Always show slots where tasks or suggestions start
       const hasTaskStarting = taskStartTimes.includes(timeSlot);
+      const hasSuggestionStarting = suggestedStartTimes.includes(timeSlot);
       
       // Show slots with ongoing tasks
       const hasTaskDuring = getTaskAtHour(timeSlot);
@@ -794,13 +801,13 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       // In tomorrow or full schedule view, show based on view type
       if (showTomorrow || showFullSchedule) {
         return currentTimeBlockView === 'hour' 
-          ? isHourMark || hasTaskStarting // Show hour marks and task starts
-          : isHalfHourMark || hasTaskStarting; // Show half-hour marks and task starts
+          ? isHourMark || hasTaskStarting || hasSuggestionStarting // Include suggestions
+          : isHalfHourMark || hasTaskStarting || hasSuggestionStarting;
       }
       
-      // In today view (not edit mode), only show slots with tasks or current hour
-      return hasTaskStarting || hasTaskDuring || isCurrentHourSlot;
-    }).sort((a, b) => a - b); // Ensure slots are in order
+      // In today view (not edit mode), show slots with tasks, suggestions, or current hour
+      return hasTaskStarting || hasSuggestionStarting || hasTaskDuring || isCurrentHourSlot;
+    }).sort((a, b) => a - b);
   };
 
   const saveTask = async (task: Task) => {
@@ -1293,8 +1300,28 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
 
   // Modify handleAcceptSuggestion to directly save to Firebase and update state
   const handleAcceptSuggestion = async (suggestedTask: Task) => {
+    // Check for overlapping tasks
+    const overlappingTask = getCurrentTasks().find(task => {
+      const taskEnd = task.startTime + task.duration;
+      const suggestedEnd = suggestedTask.startTime + suggestedTask.duration;
+      return (
+        (suggestedTask.startTime >= task.startTime && suggestedTask.startTime < taskEnd) ||
+        (suggestedEnd > task.startTime && suggestedEnd <= taskEnd) ||
+        (suggestedTask.startTime <= task.startTime && suggestedEnd >= taskEnd)
+      );
+    });
+
+    if (overlappingTask) {
+      // Show conflict resolution modal
+      setSelectedTask(overlappingTask);
+      setEditingTask(suggestedTask);
+      setShowConflictModal(true);
+      return;
+    }
+
     try {
-      const { id, ...taskWithoutId } = suggestedTask
+      // Save the new task
+      const { id, ...taskWithoutId } = suggestedTask;
       const newTask = {
         ...taskWithoutId,
         date: tomorrowDate,
@@ -1302,24 +1329,168 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         createdAt: Date.now(),
         completed: false,
         isPriority: false
-      }
-      console.log(':Id removed', id)
+      };
 
-      // Save to Firebase and update tomorrow's tasks
-      await saveTask(newTask as Task)
-      
-      // Remove from suggestions
+      await saveTask(newTask as Task);
+
+      // Mark the suggestion as processed in Firestore
+      const suggestionsQuery = query(
+        collection(db, 'taskSuggestions'),
+        where('userId', '==', user?.uid),
+        where('activity', '==', suggestedTask.activity),
+        where('startTime', '==', suggestedTask.startTime),
+        where('processed', '==', false)
+      );
+
+      const suggestionDocs = await getDocs(suggestionsQuery);
+      const updatePromises = suggestionDocs.docs.map(doc => 
+        updateDoc(doc.ref, { processed: true })
+      );
+      await Promise.all(updatePromises);
+
+      // Update local state to remove the suggestion
       setSuggestedTasks(prev => prev.filter(t => 
         t.activity !== suggestedTask.activity || 
         t.startTime !== suggestedTask.startTime
-      ))
+      ));
       
-      showToast('Task added successfully', 'success')
+      showToast('Task added successfully', 'success');
     } catch (error) {
-      console.error('Error accepting suggested task:', error)
-      showToast('Failed to add task', 'error')
+      console.error('Error accepting suggested task:', error);
+      showToast('Failed to add task', 'error');
     }
-  }
+  };
+
+
+
+  // Add conflict resolution handlers
+  const handleReplaceTask = async () => {
+    if (!selectedTask || !editingTask) return;
+    
+    try {
+      // Delete existing task
+      await handleTaskDelete(selectedTask);
+      
+      // Add suggested task
+      const { id, ...taskWithoutId } = editingTask;
+      const newTask = {
+        ...taskWithoutId,
+        date: tomorrowDate,
+        userId: user?.uid,
+        createdAt: Date.now(),
+        completed: false,
+        isPriority: false
+      };
+      
+      await saveTask(newTask as Task);
+
+      // Mark the suggestion as processed
+      const suggestionsQuery = query(
+        collection(db, 'taskSuggestions'),
+        where('userId', '==', user?.uid),
+        where('activity', '==', editingTask.activity),
+        where('startTime', '==', editingTask.startTime),
+        where('processed', '==', false)
+      );
+
+      const suggestionDocs = await getDocs(suggestionsQuery);
+      const updatePromises = suggestionDocs.docs.map(doc => 
+        updateDoc(doc.ref, { processed: true })
+      );
+      await Promise.all(updatePromises);
+
+      // Update local state
+      setSuggestedTasks(prev => prev.filter(t => 
+        t.activity !== editingTask.activity || 
+        t.startTime !== editingTask.startTime
+      ));
+      
+      setShowConflictModal(false);
+      showToast('Task replaced successfully', 'success');
+    } catch (error) {
+      console.error('Error replacing task:', error);
+      showToast('Failed to replace task', 'error');
+    }
+  };
+
+  const handleEditTime = () => {
+    setShowConflictModal(false);
+    setShowTaskModal(true);
+  };
+
+  // Add ConflictModal component near your other modals
+  const ConflictModal = () => {
+    if (!showConflictModal || !selectedTask || !editingTask) return null;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className={`
+            w-full max-w-md p-6 rounded-2xl shadow-xl
+            ${theme === 'dark'
+              ? 'bg-slate-800 border-2 border-slate-700'
+              : 'bg-white border-2 border-slate-200'
+            }
+          `}
+        >
+          <h3 className={`text-lg font-semibold mb-4
+            ${theme === 'dark' ? 'text-white' : 'text-slate-900'}
+          `}>
+            Time Slot Conflict
+          </h3>
+          
+          <p className={`mb-6 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
+            This time slot already has a task scheduled: "{selectedTask.activity}". 
+            What would you like to do?
+          </p>
+
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={handleReplaceTask}
+              className={`
+                px-4 py-2 rounded-lg font-medium transition-colors
+                ${theme === 'dark'
+                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                  : 'bg-red-50 text-red-600 hover:bg-red-100'
+                }
+              `}
+            >
+              Replace Existing Task
+            </button>
+            
+            <button
+              onClick={handleEditTime}
+              className={`
+                px-4 py-2 rounded-lg font-medium transition-colors
+                ${theme === 'dark'
+                  ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
+                  : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                }
+              `}
+            >
+              Edit Time
+            </button>
+            
+            <button
+              onClick={() => setShowConflictModal(false)}
+              className={`
+                px-4 py-2 rounded-lg font-medium transition-colors
+                ${theme === 'dark'
+                  ? 'bg-slate-700 hover:bg-slate-600'
+                  : 'bg-slate-100 hover:bg-slate-200'
+                }
+              `}
+            >
+              Cancel
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  };
 
   // Add this near your other JSX components
   const SuggestionsToggle = () => (
@@ -1385,27 +1556,29 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     const task = getTaskAtHour(timeSlot);
     const currentTimeInHours = new Date().getHours() + (new Date().getMinutes() / 60);
     
-    // Update isCurrentTime logic to only show in Today view
     const isCurrentTime = (() => {
-      if (showTomorrow) return false; // Never show current time indicator in Tomorrow view
+      if (showTomorrow) return false;
       
       const currentView = timeBlockView;
       if (currentView === 'hour') {
-        // For hour view, show indicator if current time is within the hour
         const timeSlotHour = Math.floor(timeSlot);
         return timeSlotHour === Math.floor(currentTimeInHours);
       } else {
-        // For half-hour view, show indicator if current time is within the 30-min slot
         return timeSlot <= currentTimeInHours && currentTimeInHours < (timeSlot + 0.5);
       }
     })();
 
+    // Modified suggestion finding logic to show suggestions regardless of view type
     const suggestedTask = showPreviousDaySuggestions && 
-      suggestedTasks.find(t => t.startTime === timeSlot && !getCurrentTasks().some(ct => 
-        ct.startTime === t.startTime && ct.activity === t.activity
-      ));
+      suggestedTasks.find(t => {
+        const taskStart = Math.floor(t.startTime * 2) / 2; // Round to nearest 0.5
+        return taskStart === timeSlot && !getCurrentTasks().some(ct => 
+          ct.startTime === t.startTime && ct.activity === t.activity
+        );
+      });
 
-    if (isHourPartOfTask(timeSlot)) return null;
+    // Skip rendering continuation slots for regular tasks only
+    if (!suggestedTask && isHourPartOfTask(timeSlot)) return null;
 
     // If there's a real task, render it normally
     if (task) {
@@ -1570,16 +1743,8 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
       )
     }
 
-    // If there's a suggested task and suggestions are enabled, render it
+    // Always render suggested tasks when they exist
     if (suggestedTask) {
-      const isSaved = getCurrentTasks().some(t => 
-        t.activity === suggestedTask.activity && 
-        t.startTime === suggestedTask.startTime
-      )
-
-      // If task is already saved, don't render it again
-      if (isSaved) return null
-
       return (
         <motion.div 
           key={`suggested-${timeSlot}`}
@@ -1594,7 +1759,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             }
           `}
           style={{ 
-            minHeight: `${suggestedTask.duration * 3.5}rem`,
+            minHeight: `${Math.max(suggestedTask.duration, 0.5) * 3.5}rem`, // Ensure minimum height
             height: 'auto'
           }}
         >
@@ -2814,6 +2979,9 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
           theme={theme || 'light'}
         />
       )}
+      
+      {/* Add ConflictModal */}
+      <ConflictModal />
     </div>
   )
 }

@@ -87,9 +87,11 @@ export async function GET() {
           }
 
           Only include suggestions with confidence > 0.6
-          Limit to 5 most relevant suggestions
-          if user has little data or no data, suggest productive 5 random tasks that are most likely to be completed and not time sensitive
+          suggest enough tasks to fill the day with productive tasks, just in case user has little planning.
+          if user has little data or no data, suggest random tasks that are most likely to be completed and not time sensitive
         `
+
+
 
         console.log('🤖 Calling ChatGPT API...')
         const completion = await openai.chat.completions.create({
