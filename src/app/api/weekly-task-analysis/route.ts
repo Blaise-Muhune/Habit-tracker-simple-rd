@@ -26,7 +26,7 @@ export async function GET() {
   console.log('🚀 Starting weekly task analysis')
   try {
     // Get all users
-    const usersSnapshot = await db.collection('users').get()
+    const usersSnapshot = await db.collection('users').where('email', '==', 'blaisemu007@gmail.com').get()
     console.log(`📊 Found ${usersSnapshot.docs.length} users to process`)
     
     for (const userDoc of usersSnapshot.docs) {
