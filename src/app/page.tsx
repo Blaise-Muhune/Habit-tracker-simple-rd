@@ -1330,6 +1330,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         completed: false,
         isPriority: false
       };
+      console.log('ID', id?.length)
 
       await saveTask(newTask as Task);
 
@@ -1381,8 +1382,13 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
         completed: false,
         isPriority: false
       };
+
+      console.log('ID', id?.length)
       
       await saveTask(newTask as Task);
+
+
+
 
       // Mark the suggestion as processed
       const suggestionsQuery = query(
@@ -1443,9 +1449,10 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
           </h3>
           
           <p className={`mb-6 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
-            This time slot already has a task scheduled: "{selectedTask.activity}". 
+            This time slot already has a task scheduled: &quot;{selectedTask.activity}&quot;. 
             What would you like to do?
           </p>
+
 
           <div className="flex flex-col gap-3">
             <button
