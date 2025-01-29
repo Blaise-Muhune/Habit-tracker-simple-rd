@@ -1201,10 +1201,10 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   };
 
   // Helper function to get approximate timezone from offset
-  function getTimezoneFromOffset(offset: number): string {
-    const hours = Math.abs(Math.floor(offset / 60));
-    return `Etc/GMT${offset <= 0 ? '+' : '-'}${hours}`;
-  }
+  // function getTimezoneFromOffset(offset: number): string {
+  //   const hours = Math.abs(Math.floor(offset / 60));
+  //   return `Etc/GMT${offset <= 0 ? '+' : '-'}${hours}`;
+  // }
 
   // Add this helper function for time options
   // const generateTimeOptions = () => {
