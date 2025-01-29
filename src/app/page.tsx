@@ -1174,12 +1174,12 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
   // Add this near your other click handlers
   const handleNotificationCheck = async () => {
     // Try multiple methods to get timezone
-    const timezone = 
-      Intl.DateTimeFormat().resolvedOptions().timeZone || 
-      Intl.DateTimeFormat().resolvedOptions().timeZone || 
-      new Date().getTimezoneOffset() !== 0 ? 
-        getTimezoneFromOffset(new Date().getTimezoneOffset()) : 
-        'UTC';
+    // const timezone = 
+    //   Intl.DateTimeFormat().resolvedOptions().timeZone || 
+    //   Intl.DateTimeFormat().resolvedOptions().timeZone || 
+    //   new Date().getTimezoneOffset() !== 0 ? 
+    //     getTimezoneFromOffset(new Date().getTimezoneOffset()) : 
+    //     'UTC';
 
   //   console.log('Detected timezone:', timezone);
 
