@@ -119,7 +119,7 @@ async function sendEmailNotification(task: Task, email: string, reminderTime: nu
                   </div>
 
                   <div style="text-align: center; margin-top: 24px;">
-                    <a href="https://simple-r.vercel.app" 
+                    <a href="${process.env.NEXT_PUBLIC_APP_URL}" 
                       style="
                         display: inline-block;
                         background: linear-gradient(to right, #8b5cf6, #7c3aed);
@@ -165,7 +165,7 @@ async function sendEmailNotification(task: Task, email: string, reminderTime: nu
                 ">
                   <p style="margin: 0;">Want to change your reminder settings?</p>
                   <p style="margin: 8px 0;">
-                    <a href="https://simple-r.vercel.app/preferences" 
+                    <a href="${process.env.NEXT_PUBLIC_APP_URL}/preferences" 
                       style="color: #8b5cf6; text-decoration: none;"
                     >Update your preferences</a>
                   </p>
@@ -174,7 +174,7 @@ async function sendEmailNotification(task: Task, email: string, reminderTime: nu
             </body>
           </html>
         `,
-        text: `Reminder: ${task.activity} is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n Remember why you started this task. Each step forward, no matter how small, brings you closer to your goals. You've got this! 💪 \n\nWant to change reminder type? Visit https://simple-r.vercel.app/preferences`
+        text: `Reminder: ${task.activity} is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n Remember why you started this task. Each step forward, no matter how small, brings you closer to your goals. You've got this! 💪 \n\nWant to change reminder type? Visit ${process.env.NEXT_PUBLIC_APP_URL}/preferences`
       })
     });
 
@@ -203,14 +203,14 @@ async function sendSMSNotification(task: Task, phoneNumber: string, reminderTime
   console.log('📱 Attempting SMS notification:', { taskId: task.id, phoneNumber });
   try {
     // Call your SMS endpoint
-    const response = await fetch(new URL('/api/send-sms', 'https://simple-r.vercel.app').toString(), {
+    const response = await fetch(new URL('/api/send-sms', process.env.NEXT_PUBLIC_API_URL as string || 'https://simple-r.vercel.app').toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         to: phoneNumber,
-        message: `Reminder: Your task "${task.activity}" is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n want to change reminder type? visit https://simple-r.vercel.app/preferences`,
+        message: `Reminder: Your task "${task.activity}" is starting in ${reminderTime} minutes. ${task.description ? `\n\nDetails: ${task.description}` : ''}. \n\n want to change reminder type? visit ${process.env.NEXT_PUBLIC_APP_URL}/preferences`,
         userId: task.userId // Include userId for premium check
       })
     });

@@ -79,7 +79,7 @@ async function sendWeeklyAnalyticsEmail(email: string) {
                     <p style="color: #475569; margin-bottom: 16px;">
                       Your personalized analytics dashboard is ready for review.
                     </p>
-                    <a href="https://simple-r.vercel.app/analytics" 
+                    <a href="${process.env.NEXT_PUBLIC_APP_URL}/analytics" 
                       style="
                         display: inline-block;
                         background: linear-gradient(to right, #8b5cf6, #7c3aed);
@@ -105,7 +105,7 @@ async function sendWeeklyAnalyticsEmail(email: string) {
                   font-size: 14px;
                 ">
                   <p>Need to adjust your notification settings?<br>
-                    <a href="https://simple-r.vercel.app/preferences" 
+                    <a href="${process.env.NEXT_PUBLIC_APP_URL}/preferences" 
                       style="color: #8b5cf6; text-decoration: none;"
                     >Visit your preferences</a>
                   </p>
@@ -115,7 +115,7 @@ async function sendWeeklyAnalyticsEmail(email: string) {
             </body>
           </html>
         `,
-        text: `Hey there! 👋\n\nHope you're having a great week! Just dropping by to remind you to check in on your progress.\n\nYour personalized analytics dashboard is ready for review:\nhttps://simple-r.vercel.app/analytics\n\nRemember, every small step counts towards your bigger goals. Keep pushing forward! 🌟\n\nNeed to adjust your notification settings?\nVisit: https://simple-r.vercel.app/preferences\n\nHave a productive week ahead! 💪`
+        text: `Hey there! 👋\n\nHope you're having a great week! Just dropping by to remind you to check in on your progress.\n\nYour personalized analytics dashboard is ready for review:\n${process.env.NEXT_PUBLIC_APP_URL}/analytics\n\nRemember, every small step counts towards your bigger goals. Keep pushing forward! 🌟\n\nNeed to adjust your notification settings?\nVisit: ${process.env.NEXT_PUBLIC_APP_URL}/preferences\n\nHave a productive week ahead! 💪`
       })
     });
 
