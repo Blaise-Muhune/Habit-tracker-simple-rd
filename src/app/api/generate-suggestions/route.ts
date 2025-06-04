@@ -1,11 +1,9 @@
 import { OpenAI } from 'openai'
 import { NextResponse } from 'next/server'
-import { SuggestedTask } from '@/types'
 import { db } from '@/lib/firebase'
 import { addDoc, collection, query, where, getDocs } from 'firebase/firestore'
 
 // Check if API key exists
-
 const key = process.env.OPENAI_API_KEY
 if (!key) {
   console.error('OPENAI_API_KEY is not set in environment variables')
@@ -38,18 +36,33 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check Firebase for existing suggestions first
+    // Check Firebase for existing suggestions first - Use consistent collection name
     try {
-      const suggestionsRef = collection(db, `suggestions-${body.todayOrTomorrow}`)
+      const suggestionsRef = collection(db, 'taskSuggestions')
       const suggestionsQuery = query(
         suggestionsRef,
-        where('userId', '==', body.userId)
+        where('userId', '==', body.userId),
+        where('day', '==', body.day.toLowerCase()),
+        where('processed', '==', false)
       )
       const suggestionsSnapshot = await getDocs(suggestionsQuery)
       
       if (!suggestionsSnapshot.empty) {
         console.log('Found existing suggestions in Firebase')
-        const existingSuggestions = suggestionsSnapshot.docs.map(doc => doc.data() as SuggestedTask)
+        const existingSuggestions = suggestionsSnapshot.docs.map(doc => ({
+          activity: doc.data().activity,
+          description: doc.data().description || '',
+          startTime: doc.data().startTime,
+          duration: doc.data().duration,
+          completed: false,
+          isPriority: false,
+          date: body.day,
+          createdAt: Date.now(),
+          userId: body.userId,
+          confidence: doc.data().confidence || 85,
+          category: doc.data().category || 'General',
+          day: body.day.toLowerCase()
+        }))
         return NextResponse.json(existingSuggestions)
       }
     } catch (fbError) {
@@ -58,24 +71,33 @@ export async function POST(request: Request) {
 
     // Fetch historical tasks from Firebase
     try {
-      const tasksRef = collection(db, `tasks`)
+      console.log('Attempting to fetch historical tasks for user:', body.userId)
+      
+      const tasksRef = collection(db, 'tasks')
+      console.log('Tasks collection reference created')
+      
       const tasksQuery = query(
         tasksRef,
         where('userId', '==', body.userId)
       )
+      console.log('Query created for userId:', body.userId)
+      
       const tasksSnapshot = await getDocs(tasksQuery)
+      console.log('Query executed, docs found:', tasksSnapshot.size)
+      
       const historicalTasks = tasksSnapshot.docs.map(doc => ({
         ...doc.data(),
         id: doc.id
       }))
+      console.log('Historical tasks mapped:', historicalTasks.length)
 
       // If no historical tasks found, return default suggestions
       if (historicalTasks.length === 0) {
         console.log('No historical tasks found, returning defaults')
         const defaultSuggestions = [
           {
-            activity: "Not enough tasks to generate suggestions",
-            description: "at least 5 days of tasks are required to generate suggestions",
+            activity: "Plan Your Day",
+            description: "Review goals and prioritize important tasks for productivity",
             startTime: 8,
             duration: 1,
             confidence: 90,
@@ -85,59 +107,93 @@ export async function POST(request: Request) {
             date: body.day,
             createdAt: Date.now(),
             userId: body.userId,
-            day: body.day
+            day: body.day.toLowerCase()
+          },
+          {
+            activity: "Learn Something New",
+            description: "Dedicate time to skill development and continuous learning",
+            startTime: 14,
+            duration: 1,
+            confidence: 85,
+            category: "Learning",
+            completed: false,
+            isPriority: false,
+            date: body.day,
+            createdAt: Date.now(),
+            userId: body.userId,
+            day: body.day.toLowerCase()
           }
         ]
 
         // Store default suggestions in Firebase
         try {
-          const suggestionsRef = collection(db, `suggestions-${body.todayOrTomorrow}`)
+          const suggestionsRef = collection(db, 'taskSuggestions')
           await Promise.all(defaultSuggestions.map(suggestion => 
-            addDoc(suggestionsRef, suggestion)
+            addDoc(suggestionsRef, {
+              ...suggestion,
+              processed: false
+            })
           ))
           console.log('Default suggestions stored in Firebase')
         } catch (fbError) {
           console.error('Failed to store default suggestions:', fbError)
+          // Return suggestions anyway, even if storage fails
         }
 
         return NextResponse.json(defaultSuggestions)
       }
 
-      console.log('No existing suggestions found, generating new ones with historical tasks...')
+      console.log('Proceeding with OpenAI generation using', historicalTasks.length, 'historical tasks')
       
-      // Use the fetched historical tasks for OpenAI generation
-      // 2. Prepare the prompt
+      // 2. Prepare the prompt - Fixed JSON format
       const prompt = `
         You are a productivity and time management expert. Based on these historical tasks:
         ${JSON.stringify(historicalTasks, null, 2)}
 
-        Generate only 2 suggested tasks for ${body.day}. Format your response as a JSON object with this exact structure:
+        Generate only 2 suggested tasks for ${body.day} that focus on REPETITIVE and HIGH-PRODUCTIVITY activities. Format your response as a JSON object with this exact structure:
         {
-          "suggestions-${body.todayOrTomorrow}": [
+          "suggestions": [
             {
               "activity": "Task name",
               "description": "Brief description",
-              "startTime": number between 0-23,
-              "duration": number between 1-4,
-              "category": "optional category name"
-              "day": "day name"
+              "startTime": 14,
+              "duration": 1,
+              "category": "category name"
+            },
+            {
+              "activity": "Task name 2",
+              "description": "Brief description 2", 
+              "startTime": 16,
+              "duration": 2,
+              "category": "category name 2"
             }
           ]
         }
 
         Rules:
+        - PRIORITIZE repetitive tasks that appear frequently in historical data
+        - Focus on high-impact productivity activities (learning, planning, skill development, health, organization)
+        - Identify patterns in user's routine and suggest similar recurring tasks
+        - For repetitive tasks, consider optimal timing based on when user typically performs them
+        - Suggest tasks that build momentum and create positive habits
+        - If suggesting new productive activities, ensure they align with user's existing patterns
         - activity should be clear and actionable
-        - startTime must be between 0 and 23 (24-hour format)
+        - startTime must be between 0 and 23 (24-hour format) and should match user's typical schedule patterns
         - duration must be between 1 and 4 hours
-        - descriptions should be under 100 characters
-        - base suggestions on patterns from historical tasks
-        - look at the day of the week and suggest tasks accordingly
-        - suggest tasks based on trends from historical tasks on that day of the week
-        - if user has no tasks or very little tasks, suggest tasks that are not time-sensitive
+        - descriptions should be under 100 characters and emphasize the productivity benefit
+        - base suggestions on patterns from historical tasks, especially recurring ones
+        - look at the day of the week and suggest tasks that the user commonly does on that day
+        - if user has limited task history, suggest foundational productivity habits (planning, learning, exercise, organization)
+        - consider task frequency - prioritize suggesting tasks the user does weekly or daily over one-time tasks
       `
 
       // 3. Make OpenAI request with error handling
       console.log('Sending request to OpenAI...')
+      
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OpenAI API key not configured')
+      }
+      
       const completion = await openai.chat.completions.create({
         messages: [{ 
           role: "user", 
@@ -164,7 +220,14 @@ export async function POST(request: Request) {
       }
 
       // Validate each suggestion matches our interface
-      const validatedSuggestions = parsedResponse.suggestions.map((suggestion: SuggestedTask): SuggestedTask => {
+      const validatedSuggestions = parsedResponse.suggestions.map((suggestion: {
+        activity: string;
+        description?: string;
+        startTime: number;
+        duration: number;
+        confidence?: number;
+        category?: string;
+      }) => {
         if (
           typeof suggestion.activity !== 'string' ||
           typeof suggestion.startTime !== 'number' ||
@@ -187,15 +250,31 @@ export async function POST(request: Request) {
           userId: body.userId,
           confidence: suggestion.confidence || 85,
           category: suggestion.category || 'General',
-          day: body.day
+          day: body.day.toLowerCase()
         }
       })
 
-      // Store suggestions in Firebase
+      // Store suggestions in Firebase - Use consistent collection name
       try {
-        const suggestionsRef = collection(db, `suggestions-${body.todayOrTomorrow}`)
-        await Promise.all(validatedSuggestions.map((suggestion: SuggestedTask) => 
-          addDoc(suggestionsRef, suggestion)
+        const suggestionsRef = collection(db, 'taskSuggestions')
+        await Promise.all(validatedSuggestions.map((suggestion: {
+          activity: string;
+          description: string;
+          startTime: number;
+          duration: number;
+          completed: boolean;
+          isPriority: boolean;
+          date: string;
+          createdAt: number;
+          userId: string;
+          confidence: number;
+          category: string;
+          day: string;
+        }) => 
+          addDoc(suggestionsRef, {
+            ...suggestion,
+            processed: false
+          })
         ))
         console.log('Suggestions stored in Firebase')
       } catch (fbError) {
@@ -207,10 +286,57 @@ export async function POST(request: Request) {
 
     } catch (fbError) {
       console.error('Failed to query Firebase tasks:', fbError)
-      return NextResponse.json(
-        { error: 'Failed to fetch historical tasks' },
-        { status: 500 }
-      )
+      console.error('Error details:', {
+        message: fbError instanceof Error ? fbError.message : 'Unknown Firebase error',
+        code: fbError instanceof Error && 'code' in fbError ? fbError.code : 'No code',
+        name: fbError instanceof Error ? fbError.name : 'Unknown error name'
+      })
+      
+      // Try to return default suggestions as fallback
+      try {
+        const defaultSuggestions = [
+          {
+            activity: "Plan Your Day",
+            description: "Review goals and prioritize important tasks for productivity",
+            startTime: 9,
+            duration: 1,
+            confidence: 90,
+            category: "Planning",
+            completed: false,
+            isPriority: false,
+            date: body.day,
+            createdAt: Date.now(),
+            userId: body.userId,
+            day: body.day.toLowerCase()
+          },
+          {
+            activity: "Focus Time",
+            description: "Dedicated time for deep work and important tasks",
+            startTime: 15,
+            duration: 2,
+            confidence: 85,
+            category: "Productivity",
+            completed: false,
+            isPriority: false,
+            date: body.day,
+            createdAt: Date.now(),
+            userId: body.userId,
+            day: body.day.toLowerCase()
+          }
+        ]
+        
+        console.log('Returning fallback default suggestions due to Firebase error')
+        return NextResponse.json(defaultSuggestions)
+      } catch (fallbackError) {
+        console.error('Even fallback failed:', fallbackError)
+        return NextResponse.json(
+          { 
+            error: 'Failed to fetch historical tasks and fallback failed',
+            details: fbError instanceof Error ? fbError.message : 'Unknown error'
+          },
+          { status: 500 }
+        )
+      }
     }
 
   } catch (error: unknown) {

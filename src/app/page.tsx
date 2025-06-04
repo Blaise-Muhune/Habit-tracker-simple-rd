@@ -22,7 +22,7 @@ import {
 import { useAuth } from '@/context/AuthContext'
 // import { User } from 'firebase/auth'
 import Link from 'next/link'
-import { Task, UserPreferences, TaskSuggestion } from '@/types'
+import { Task, UserPreferences } from '@/types'
 import { Toast } from '@/components/Toast'
 import { Tour } from '@/components/Tour'
 import { useRouter } from 'next/navigation'
@@ -454,7 +454,7 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     setTomorrowTimeBlockView('hour')
   }
 
-  // Modify fetchPreviousDayTasks to use stored suggestions
+  // Modify fetchPreviousDayTasks to call the API and get suggestions
   const fetchPreviousDayTasks = useCallback(async () => {
     if (!user) {
       console.log('No user found, skipping fetch')
@@ -462,55 +462,98 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     }
 
     try {
-      const targetDay = format(addDays(new Date(), 1), 'EEEE').toLowerCase()
+      const targetDay = format(addDays(new Date(), 1), 'EEEE')
+      const targetDate = format(addDays(new Date(), 1), 'yyyy-MM-dd')
       console.log('Fetching suggestions for day:', targetDay)
       
+      // First try to call the API to generate suggestions
+      try {
+        const response = await fetch('/api/generate-suggestions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user.uid,
+            day: targetDate,
+            todayOrTomorrow: 'tomorrow'
+          }),
+        })
+
+        if (response.ok) {
+          const apiSuggestions = await response.json()
+          console.log('API suggestions:', apiSuggestions)
+          
+          const suggestedTasks = apiSuggestions.map((suggestion: {
+            activity: string;
+            startTime: number;
+            duration: number;
+            description?: string;
+          }) => ({
+            activity: suggestion.activity,
+            startTime: suggestion.startTime,
+            duration: suggestion.duration,
+            description: suggestion.description || '',
+            date: targetDate,
+            userId: user.uid,
+            day: targetDay.toLowerCase(),
+            suggested: true,
+            isPriority: false,
+            completed: false,
+            createdAt: Date.now()
+          })) as Task[]
+
+          console.log('Converted to tasks:', suggestedTasks)
+          setSuggestedTasks(suggestedTasks)
+          return
+        }
+      } catch (apiError) {
+        console.error('API call failed, falling back to direct Firebase query:', apiError)
+      }
+
+      // Fallback: Query Firebase directly for existing suggestions
       const suggestionsQuery = query(
         collection(db, 'taskSuggestions'),
         where('userId', '==', user.uid),
-        where('day', '==', targetDay),
-        where('processed', '==', false),
-        orderBy('confidence', 'desc')
+        where('day', '==', targetDay.toLowerCase()),
+        where('processed', '==', false)
       )
 
-      console.log('Query params:', {
-        userId: user.uid,
-        day: targetDay,
-        processed: false
-      })
-
       const snapshot = await getDocs(suggestionsQuery)
-      console.log('Raw Firestore response:', snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+      console.log('Fallback Firebase query:', snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
 
       const suggestions = snapshot.docs.map(doc => ({
-        ...(doc.data() as Omit<TaskSuggestion, 'id'>),
+        ...doc.data(),
         id: doc.id
-      })) as TaskSuggestion[]
+      })) as Array<{
+        activity: string;
+        startTime: number;
+        duration: number;
+        description?: string;
+        id: string;
+      }>
       
-      console.log('Parsed suggestions:', suggestions)
-
       const suggestedTasks = suggestions.map(suggestion => ({
         activity: suggestion.activity,
         startTime: suggestion.startTime,
         duration: suggestion.duration,
-        description: suggestion.description,
-        date: tomorrowDate,
+        description: suggestion.description || '',
+        date: targetDate,
         userId: user.uid,
-        day: targetDay,
+        day: targetDay.toLowerCase(),
         suggested: true,
         isPriority: false,
         completed: false,
         createdAt: Date.now()
       })) as Task[]
 
-      console.log('Converted to tasks:', suggestedTasks)
-
+      console.log('Fallback converted to tasks:', suggestedTasks)
       setSuggestedTasks(suggestedTasks)
     } catch (error) {
       console.error('Error fetching suggestions:', error)
       showToast('Failed to load task suggestions', 'error')
     }
-  }, [user, tomorrowDate])
+  }, [user])
 
   // Add effect to fetch suggestions when toggle is turned on
   useEffect(() => {
@@ -1531,6 +1574,42 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
             ${showPreviousDaySuggestions ? 'translate-x-5' : 'translate-x-0'}
           `} />
         </button>
+        {isPremiumUser && (
+          <button
+            onClick={handleTestSuggestions}
+            className={`
+              ml-2 p-1 rounded-lg transition-colors
+              ${theme === 'dark'
+                ? 'hover:bg-slate-700 text-slate-400'
+                : 'hover:bg-slate-100 text-slate-600'
+              }
+            `}
+            title="Generate new suggestions"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        )}
+        {isPremiumUser && (
+          <button
+            onClick={handleDebugFirebase}
+            className={`
+              ml-1 p-1 rounded-lg transition-colors
+              ${theme === 'dark'
+                ? 'hover:bg-slate-700 text-slate-400'
+                : 'hover:bg-slate-100 text-slate-600'
+              }
+            `}
+            title="Debug Firebase connection"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+          </button>
+        )}
         {!isPremiumUser && (
                               <span 
                               onClick={() => {
@@ -1872,6 +1951,76 @@ const [isEndTimePickerOpen, setIsEndTimePickerOpen] = useState(false)
     </div>
   </div>
 )
+  }
+
+  // Add this near your other click handlers
+  const handleTestSuggestions = async () => {
+    if (!user) {
+      showToast('Please sign in to test suggestions', 'error')
+      return
+    }
+
+    try {
+      const targetDate = format(addDays(new Date(), 1), 'yyyy-MM-dd')
+      
+      showToast('Generating AI suggestions...', 'info')
+      
+      const response = await fetch('/api/generate-suggestions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.uid,
+          day: targetDate,
+          todayOrTomorrow: 'tomorrow'
+        }),
+      })
+
+      if (response.ok) {
+        const suggestions = await response.json()
+        console.log('Generated suggestions:', suggestions)
+        showToast(`Generated ${suggestions.length} AI suggestions!`, 'success')
+        
+        // Refresh the suggestions display
+        if (showPreviousDaySuggestions) {
+          fetchPreviousDayTasks()
+        }
+      } else {
+        const error = await response.json()
+        console.error('API Error:', error)
+        showToast('Failed to generate suggestions: ' + error.error, 'error')
+      }
+    } catch (error) {
+      console.error('Error generating suggestions:', error)
+      showToast('Failed to generate suggestions', 'error')
+    }
+  }
+
+  // Add this debug function near your other click handlers
+  const handleDebugFirebase = async () => {
+    if (!user) {
+      showToast('Please sign in to test Firebase', 'error')
+      return
+    }
+
+    try {
+      showToast('Testing Firebase connection...', 'info')
+      
+      const response = await fetch(`/api/debug-firebase?userId=${user.uid}`)
+      const result = await response.json()
+      
+      if (response.ok) {
+        console.log('Firebase debug result:', result)
+        showToast(`Firebase test passed! Found ${result.data.userTasks} user tasks`, 'success')
+      } else {
+        console.error('Firebase debug failed:', result)
+        showToast(`Firebase test failed: ${result.error}`, 'error')
+      }
+    } catch (error) {
+      console.error('Debug test error:', error)
+      showToast('Debug test failed', 'error')
+    }
   }
 
   return (
